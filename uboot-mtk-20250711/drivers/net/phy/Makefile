@@ -12,6 +12,7 @@ obj-$(CONFIG_PHYLIB) += phy.o
 obj-$(CONFIG_PHYLIB_10G) += generic_10g.o
 obj-$(CONFIG_PHY_ADIN) += adin.o
 obj-$(CONFIG_PHY_AIROHA_AN8801SB) += an8801.o
+obj-$(CONFIG_PHY_AIROHA_AN8811HB) += air_an8811hb.o
 obj-$(CONFIG_PHY_AIROHA_EN8801S) += air_en8801s.o
 obj-$(CONFIG_PHY_AIROHA_EN8811H) += air_en8811h.o
 obj-$(CONFIG_PHY_AQUANTIA) += aquantia.o
