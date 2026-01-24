@@ -17,15 +17,15 @@ obj-y += booting.o
 FILE_booting.o := booting.html
 FSPATH_booting.o := booting.html
 
-obj-y += backup.o
+obj-$(CONFIG_WEBUI_FAILSAFE_BACKUP) += backup.o
 FILE_backup.o := backup.html
 FSPATH_backup.o := backup.html
 
-obj-y += env.o
+obj-$(CONFIG_WEBUI_FAILSAFE_ENV) += env.o
 FILE_env.o := env.html
 FSPATH_env.o := env.html
 
-obj-y += factory.o
+obj-$(CONFIG_WEBUI_FAILSAFE_FACTORY) += factory.o
 FILE_factory.o := factory.html
 FSPATH_factory.o := factory.html
 

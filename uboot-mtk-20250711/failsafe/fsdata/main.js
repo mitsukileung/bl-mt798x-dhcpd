@@ -506,13 +506,13 @@ async function ensureSysInfoLoaded() {
 }
 
 function getStorageInfoForSysinfo() {
-    // Pull /backupinfo to render current partition table in the sysinfo box
+    // Pull /backup/info to render current partition table in the sysinfo box
     if (APP_STATE.backupinfo) {
         updateGptNavVisibility();
         return;
     }
     ajax({
-        url: "/backupinfo",
+        url: "/backup/info",
         done: function (txt) {
             try {
                 APP_STATE.backupinfo = JSON.parse(txt);
@@ -695,7 +695,7 @@ function backupInit() {
         s && (s.style.display = t ? "none" : "");
         c && (c.style.gridTemplateColumns = t ? "1fr" : "")
     }, u.onchange = updateBackupUi, f = document.getElementById("backup_start"), e = document.getElementById("backup_end"), f && (f.oninput = backupUpdateRangeHint), e && (e.oninput = backupUpdateRangeHint), updateBackupUi(), setBackupStatus(""), ajax({
-        url: "/backupinfo",
+        url: "/backup/info",
         done: function (u) {
             var r, e, o, s, f;
             try {
@@ -773,7 +773,7 @@ async function startBackup() {
     setBackupProgress(0);
     setBackupStatus(t("backup.status.starting"));
     try {
-        h = await fetch("/backup", { method: "POST", body: e });
+        h = await fetch("/backup/main", { method: "POST", body: e });
         if (!h.ok) {
             setBackupStatus(t("backup.error.http") + " " + h.status);
             return

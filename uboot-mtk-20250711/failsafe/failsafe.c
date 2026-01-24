@@ -10,7 +10,9 @@
 #include <command.h>
 #include <errno.h>
 #include <env.h>
+#ifdef CONFIG_WEBUI_FAILSAFE_ENV
 #include <env_internal.h>
+#endif
 #include <malloc.h>
 #include <console.h>
 #include <membuf.h>
@@ -37,16 +39,6 @@
 
 DECLARE_GLOBAL_DATA_PTR;
 
-int __weak failsafe_validate_image(const void *data, size_t size, failsafe_fw_t fw)
-{
-	return 0;
-}
-
-int __weak failsafe_write_image(const void *data, size_t size, failsafe_fw_t fw)
-{
-	return -ENOSYS;
-}
-
 #include "../board/mediatek/common/boot_helper.h"
 #ifdef CONFIG_MTD
 #include "../board/mediatek/common/mtd_helper.h"
@@ -65,13 +57,23 @@ static const void *upload_data;
  */
 static u32 fs_upload_id;
 static size_t upload_size;
-static failsafe_fw_t fw_type;
 static bool upgrade_success;
+static failsafe_fw_t fw_type;
 #ifdef CONFIG_MEDIATEK_MULTI_MTD_LAYOUT
 static const char *mtd_layout_label;
 const char *get_mtd_layout_label(void);
 #define MTD_LAYOUTS_MAXLEN 128
 #endif
+
+int __weak failsafe_validate_image(const void *data, size_t size, failsafe_fw_t fw)
+{
+	return 0;
+}
+
+int __weak failsafe_write_image(const void *data, size_t size, failsafe_fw_t fw)
+{
+	return -ENOSYS;
+}
 
 #ifdef CONFIG_MTK_BOOTMENU_MMC
 static bool failsafe_mmc_present(void)
@@ -496,6 +498,7 @@ static void webconsole_clear_handler(enum httpd_uri_handler_status status,
 }
 #endif /* CONFIG_WEBUI_FAILSAFE_CONSOLE */
 
+#ifdef CONFIG_WEBUI_FAILSAFE_ENV
 #define ENV_NAME_MAX_LEN 128
 
 static void failsafe_env_free_session(enum httpd_uri_handler_status status,
@@ -778,6 +781,7 @@ static void env_restore_handler(enum httpd_uri_handler_status status,
 
 	failsafe_http_reply_text(response, 200, "ok");
 }
+#endif /* CONFIG_WEBUI_FAILSAFE_ENV */
 
 static void sysinfo_handler(enum httpd_uri_handler_status status,
 							struct httpd_request *request,
@@ -910,6 +914,8 @@ static void reboot_handler(enum httpd_uri_handler_status status,
 		do_reset(NULL, 0, 0, NULL);
 	}
 }
+
+#ifdef CONFIG_WEBUI_FAILSAFE_BACKUP
 
 enum backup_phase {
 	BACKUP_PHASE_HDR = 0,
@@ -1585,6 +1591,8 @@ oom:
 	return;
 }
 
+#endif /* CONFIG_WEBUI_FAILSAFE_BACKUP */
+
 
 static void upload_handler(enum httpd_uri_handler_status status,
 			  struct httpd_request *request,
@@ -1650,6 +1658,7 @@ static void upload_handler(enum httpd_uri_handler_status status,
 		goto done;
 	}
 
+#ifdef CONFIG_WEBUI_FAILSAFE_FACTORY
 	fw = httpd_request_find_value(request, "factory");
 	if (fw) {
 		fw_type = FW_TYPE_FACTORY;
@@ -1657,6 +1666,7 @@ static void upload_handler(enum httpd_uri_handler_status status,
 			goto fail;
 		goto done;
 	}
+#endif
 
 	fw = httpd_request_find_value(request, "initramfs");
 	if (fw) {
@@ -1897,17 +1907,26 @@ int start_web_failsafe(void)
 	httpd_register_uri_handler(inst, "/booting.html", &html_handler, NULL);
 	httpd_register_uri_handler(inst, "/cgi-bin/luci", &index_handler, NULL);
 	httpd_register_uri_handler(inst, "/cgi-bin/luci/", &index_handler, NULL);
+	httpd_register_uri_handler(inst, "/sysinfo", &sysinfo_handler, NULL);
+
+#ifdef CONFIG_WEBUI_FAILSAFE_BACKUP
 	httpd_register_uri_handler(inst, "/backup.html", &html_handler, NULL);
+	httpd_register_uri_handler(inst, "/backup/info", &backupinfo_handler, NULL);
+	httpd_register_uri_handler(inst, "/backup/main", &backup_handler, NULL);
+#endif
+
+#ifdef CONFIG_WEBUI_FAILSAFE_ENV
 	httpd_register_uri_handler(inst, "/env.html", &html_handler, NULL);
 	httpd_register_uri_handler(inst, "/env/list", &env_list_handler, NULL);
 	httpd_register_uri_handler(inst, "/env/set", &env_set_handler, NULL);
 	httpd_register_uri_handler(inst, "/env/unset", &env_unset_handler, NULL);
 	httpd_register_uri_handler(inst, "/env/reset", &env_reset_handler, NULL);
 	httpd_register_uri_handler(inst, "/env/restore", &env_restore_handler, NULL);
-	httpd_register_uri_handler(inst, "/backupinfo", &backupinfo_handler, NULL);
-	httpd_register_uri_handler(inst, "/backup", &backup_handler, NULL);
-	httpd_register_uri_handler(inst, "/sysinfo", &sysinfo_handler, NULL);
+#endif
+
+#ifdef CONFIG_WEBUI_FAILSAFE_FACTORY
 	httpd_register_uri_handler(inst, "/factory.html", &html_handler, NULL);
+#endif
 	httpd_register_uri_handler(inst, "/fail.html", &html_handler, NULL);
 	httpd_register_uri_handler(inst, "/flashing.html", &html_handler, NULL);
 	httpd_register_uri_handler(inst, "/getmtdlayout", &mtd_layout_handler, NULL);
