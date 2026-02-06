@@ -52,6 +52,7 @@ static const void *upload_data;
 static size_t upload_size;
 static bool upgrade_success;
 static failsafe_fw_t fw_type;
+static bool failsafe_httpd_running;
 
 #ifdef CONFIG_MEDIATEK_MULTI_MTD_LAYOUT
 static const char *mtd_layout_label;
@@ -112,6 +113,17 @@ static void version_handler(enum httpd_uri_handler_status status,
 	response->info.content_type = "text/plain";
 }
 
+void schedule_hook(void)
+{
+	if (!failsafe_httpd_running)
+		return;
+
+#if defined(CONFIG_MTK_TCP)
+	eth_rx();
+	mtk_tcp_periodic_check();
+#endif
+}
+
 struct reboot_session {
 	int dummy;
 };
@@ -167,8 +179,8 @@ static size_t json_escape(char *dst, size_t dst_sz, const char *src)
 }
 
 #ifdef CONFIG_WEBUI_FAILSAFE_CONSOLE
-#define WEB_CONSOLE_CMD_MAX	256
-#define WEB_CONSOLE_POLL_MAX	2048
+#define WEB_CONSOLE_CMD_MAX		256
+#define WEB_CONSOLE_POLL_MAX	8192
 
 static const char *failsafe_get_prompt(void)
 {
@@ -400,6 +412,17 @@ static void webconsole_exec_handler(enum httpd_uri_handler_status status,
 		printf("%s%s%s\n", prompt, need_space ? " " : "", cmd);
 	}
 	ret = run_command(cmd, 0);
+	{
+		const char *prompt = failsafe_get_prompt();
+
+		if (!prompt || !prompt[0])
+			prompt = "MTK> ";
+
+		if (prompt[0] != '\n')
+			printf("\n%s", prompt);
+		else
+			printf("%s", prompt);
+	}
 
 	esc_sz = strlen(cmd) * 2 + 64;
 	esc = malloc(esc_sz);
@@ -1952,7 +1975,9 @@ int start_web_failsafe(void)
 	if (IS_ENABLED(CONFIG_MTK_DHCPD))
 		mtk_dhcpd_start();
 
+	failsafe_httpd_running = true;
 	net_loop(MTK_TCP);
+	failsafe_httpd_running = false;
 
 	if (IS_ENABLED(CONFIG_MTK_DHCPD))
 		mtk_dhcpd_stop();
