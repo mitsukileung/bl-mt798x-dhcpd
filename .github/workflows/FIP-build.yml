@@ -286,7 +286,19 @@ jobs:
               -e '/^config[[:space:]]+MTK_DHCPD_USE_CONFIG_IP$/,/^config[[:space:]]+/ s/^\tdefault[[:space:]]+y$/\tdefault n/' \
               "$f"
             echo "Patched: $f"
+          fi
+        done
+
+        # 替换 mtk_dhcpd.c 文件中的默认 IP
+        for f in uboot-mtk-*/net/mtk_dhcpd.c; do
+          if [ -f "$f" ]; then
+            # 替换 #define DHCPD_DEFAULT_IP_STR "xxx"
+            sed -i -E "s~(#define[[:space:]]+DHCPD_DEFAULT_IP_STR[[:space:]]+\")[0-9.]+(\")~\1${CUSTOM_IP}\2~" "$f"
+            echo "Patched default IP in: $f"
+            grep -E '#define[[:space:]]+DHCPD_DEFAULT_IP_STR' "$f"
             count=$((count+1))
+          else
+            echo "Warning: 未找到 $f"
           fi
         done
 
