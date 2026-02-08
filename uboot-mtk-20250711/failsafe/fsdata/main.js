@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2026 Yuzhii
+ * Copyright (C) 2026 Yuzhii0718
+ *
  * All rights reserved.
  *
  * This file is part of the project bl-mt798x-dhcpd
