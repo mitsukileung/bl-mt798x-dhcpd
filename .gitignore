@@ -38,9 +38,7 @@ output_ramboot/*
 mt798x_gpt_bin/*
 mt798x_simg/*
 unopen/*
-ramboot_cfg/*
-atf-20260123/*
-uboot-mtk-20260123/*
+atf_cfg/*
 migration_configs/*
 migration_dts/*
 migration*.py
