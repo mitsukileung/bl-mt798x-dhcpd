@@ -72,7 +72,7 @@ void schedule_hook(void)
 }
 
 struct reboot_session {
-	int dummy;
+	bool do_reboot;
 };
 
 #ifdef CONFIG_MTK_BOOTMENU_MMC
@@ -417,6 +417,8 @@ static void reboot_handler(enum httpd_uri_handler_status status,
 			return;
 		}
 
+		st->do_reboot = true;
+
 		response->session_data = st;
 		response->status = HTTP_RESP_STD;
 		response->data = "rebooting";
@@ -428,12 +430,72 @@ static void reboot_handler(enum httpd_uri_handler_status status,
 	}
 
 	if (status == HTTP_CB_CLOSED) {
+		bool do_reboot = false;
+
 		st = response->session_data;
+		if (st)
+			do_reboot = st->do_reboot;
 		free(st);
 
-		/* Make sure the current HTTP session has fully closed before reset */
-		mtk_tcp_close_all_conn();
-		do_reset(NULL, 0, 0, NULL);
+		if (do_reboot) {
+			/* Make sure the current HTTP session has fully closed before reset */
+			mtk_tcp_close_all_conn();
+			do_reset(NULL, 0, 0, NULL);
+		}
+	}
+}
+
+static void reboot_failsafe_handler(enum httpd_uri_handler_status status,
+				   struct httpd_request *request,
+				   struct httpd_response *response)
+{
+	struct reboot_session *st;
+	int ret;
+
+	if (status == HTTP_CB_NEW) {
+		ret = env_set("failsafe", "1");
+		if (!ret)
+			ret = env_save();
+
+		if (ret) {
+			response->status = HTTP_RESP_STD;
+			response->data = "failsafe env set failed";
+			response->size = strlen(response->data);
+			response->info.code = 500;
+			response->info.connection_close = 1;
+			response->info.content_type = "text/plain";
+			return;
+		}
+
+		st = calloc(1, sizeof(*st));
+		if (!st) {
+			response->info.code = 500;
+			return;
+		}
+
+		st->do_reboot = true;
+		response->session_data = st;
+		response->status = HTTP_RESP_STD;
+		response->data = "rebooting to failsafe";
+		response->size = strlen(response->data);
+		response->info.code = 200;
+		response->info.connection_close = 1;
+		response->info.content_type = "text/plain";
+		return;
+	}
+
+	if (status == HTTP_CB_CLOSED) {
+		bool do_reboot = false;
+
+		st = response->session_data;
+		if (st)
+			do_reboot = st->do_reboot;
+		free(st);
+
+		if (do_reboot) {
+			mtk_tcp_close_all_conn();
+			do_reset(NULL, 0, 0, NULL);
+		}
 	}
 }
 
@@ -775,6 +837,7 @@ int start_web_failsafe(void)
 	httpd_register_uri_handler(inst, "/version", &version_handler, NULL);
 	httpd_register_uri_handler(inst, "", &not_found_handler, NULL);
 	httpd_register_uri_handler(inst, "/reboot", &reboot_handler, NULL);
+	httpd_register_uri_handler(inst, "/reboot-failsafe", &reboot_failsafe_handler, NULL);
 	httpd_register_uri_handler(inst, "/reboot.html", &html_handler, NULL);
 	httpd_register_uri_handler(inst, "/sysinfo", &sysinfo_handler, NULL);
 #ifdef CONFIG_WEBUI_FAILSAFE_I18N
