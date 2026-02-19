@@ -58,7 +58,7 @@ BOARD=cmcc_a10 VERSION=2025 MULTI_LAYOUT=1 ./build.sh
 - VERSION=2022/2023/2024/2025 (default: 2025. Optional)
 - MULTI_LAYOUT (default: 0. Optional, only for multi-layout devices, e.g. xiaomi-wr30u, redmi-ax6000)
 - FIXED_MTDPARTS (default: 1. Optional, if set to 0, for nand device, the mtdparts will be editiable, but it may cause some issues if you don't know what you are doing)
-- VARIANT=default/ubootmod/nonmbm (default: default. Optional, for different firmware variants, e.g. OpenWrt/ImmortalWrt stock firmware, OpenWrt/ImmortalWrt U-Boot layout firmware, nmbm disabled firmware, etc.)
+- VARIANT=default/ubootmod/nonmbm (default: default. Optional, for different firmware variants, e.g. OpenWrt/ImmortalWrt stock firmware(usually enable NMBM), OpenWrt/ImmortalWrt U-Boot layout firmware, NMBM disabled firmware, etc.)
 
 > CAN'T ENABLE MULTI_LAYOUT=1 and FIXED_MTDPARTS=0 at the same time
 
@@ -192,6 +192,15 @@ e.g.
 ### Disable auto-reboot after upgrade
 
 Set failsafe_auto_reboot environment variable to 1/true/yes/on to enable auto reboot after upgrade(New WEB UI).
+
+### Some commands in firmware
+
+```bash
+fw_setenv env_invalid 1 # Reset environment to default values in next boot
+fw_setenv failsafe 1 # Reboot to failsafe mode in next boot
+```
+
+> need install `uboot-envtools` and configure `package/boot/uboot-envtools/files/mediatek_filogic` correctly for your device before compile firmware, otherwise the environment variables will not work.
 
 ---
 
