@@ -51,8 +51,12 @@ sudo apt install gcc-aarch64-linux-gnu build-essential flex bison libssl-dev dev
 
 ```bash
 chmod +x build.sh
+# mt7981, emmc device
 BOARD=sn_r1 VERSION=2025 ./build.sh
+# mt7981, spi-nand device, multi-layout device
 BOARD=cmcc_a10 VERSION=2025 MULTI_LAYOUT=1 ./build.sh
+# mt7986, spi-nand device, multi-layout device, single image upgrade support
+BOARD=ruijie_rg-x60-new MULTI_LAYOUT=1 SIMG=1 ./build.sh
 ```
 
 - SOC=mt7981/mt7986 (auto detected. Optional)
@@ -60,6 +64,7 @@ BOARD=cmcc_a10 VERSION=2025 MULTI_LAYOUT=1 ./build.sh
 - MULTI_LAYOUT (default: 0. Optional, only for multi-layout devices, e.g. xiaomi-wr30u, redmi-ax6000)
 - FIXED_MTDPARTS (default: 1. Optional, if set to 0, for nand device, the mtdparts will be editiable, but it may cause some issues if you don't know what you are doing)
 - VARIANT=default/ubootmod/nonmbm (default: default. Optional, for different firmware variants, e.g. OpenWrt/ImmortalWrt stock firmware(usually enable NMBM), OpenWrt/ImmortalWrt U-Boot layout firmware, NMBM disabled firmware, etc.)
+- SIMG=0/1 (default: 0. Optional, if set to 1, the failsafe will support single image upgrade, but it may cause some issues if you don't know what you are doing)
 
 > CAN'T ENABLE MULTI_LAYOUT=1 and FIXED_MTDPARTS=0 at the same time
 
