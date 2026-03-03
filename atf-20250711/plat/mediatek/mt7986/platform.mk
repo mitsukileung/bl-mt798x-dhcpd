@@ -54,6 +54,13 @@ endif
 endif
 CPPFLAGS += -DOPTEE_TZRAM_SIZE=$(OPTEE_TZRAM_SIZE)
 
+# MT7986 ARMPLL overclock target (MHz): 2000 keeps default behavior,
+# supported OC values: 2100 2200, 2300, 2400, 2500.
+MT7986_ARMPLL_FREQ_MHZ ?= 2000
+ifneq ($(MT7986_ARMPLL_FREQ_MHZ),2000)
+$(eval $(call add_define_val,MT7986_ARMPLL_FREQ_MHZ,$(MT7986_ARMPLL_FREQ_MHZ)))
+endif
+
 # Make sure make command parameter reflects on .o files immediately
 include make_helpers/dep.mk
 

@@ -675,6 +675,18 @@ ul {
     text-align: left;
 }
 
+.md5-status {
+    font-weight: 700;
+}
+
+.md5-status.md5-ok {
+    color: #16a34a;
+}
+
+.md5-status.md5-bad {
+    color: var(--danger);
+}
+
 #filename {
     text-align: center;
     overflow-wrap: anywhere;
@@ -813,6 +825,23 @@ ul {
     font-size: 12px;
     color: var(--muted);
     white-space: pre-wrap;
+}
+
+.env-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+.env-toolbar a {
+    color: var(--muted);
+}
+
+.env-toolbar .sep {
+    opacity: .75;
 }
 
 @keyframes brandIn {
