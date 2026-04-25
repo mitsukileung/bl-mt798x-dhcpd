@@ -7,7 +7,7 @@
 / {
 	#address-cells = <1>;
 	#size-cells = <1>;
-	model = "mt7981-cetron_ct3003";
+	model = "mt7981-tplink_wma301v2";
 	compatible = "mediatek,mt7981", "mediatek,mt7981-rfb";
 
 	chosen {
@@ -32,7 +32,7 @@
 		button-mesh {
 			label = "mesh";
 			linux,code = <BTN_9>;
-			gpios = <&pio 0 GPIO_ACTIVE_HIGH>;
+			gpios = <&pio 0 GPIO_ACTIVE_LOW>;
 		};
 	};
 
@@ -41,12 +41,12 @@
 
 		status_red_led: led-0 {
 			label = "red:status";
-			gpios = <&pio 3 GPIO_ACTIVE_LOW>;
+			gpios = <&pio 12 GPIO_ACTIVE_LOW>;
 		};
 
 		status_green_led: led-1 {
 			label = "green:status";
-			gpios = <&pio 7 GPIO_ACTIVE_LOW>;
+			gpios = <&pio 11 GPIO_ACTIVE_LOW>;
 		};
 	};
 
@@ -117,6 +117,10 @@
 		reg = <0>;
 		spi-max-frequency = <52000000>;
 	};
+};
+
+&uart0 {
+	status = "okay";
 };
 
 &watchdog {
