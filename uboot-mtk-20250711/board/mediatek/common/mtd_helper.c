@@ -73,6 +73,11 @@ void gen_mtd_probe_devices(void)
 	const char *mtdids = NULL, *mtdparts = NULL;
 
 #if defined(CONFIG_SYS_MTDPARTS_RUNTIME)
+#ifdef CONFIG_MEDIATEK_MULTI_MTD_LAYOUT
+	/* Force runtime re-generation after layout switch in the same session */
+	env_set("mtdids", NULL);
+	env_set("mtdparts", NULL);
+#endif
 	board_mtdparts_default(&mtdids, &mtdparts);
 #else
 #if defined(MTDIDS_DEFAULT)

@@ -908,6 +908,8 @@ async function flashRestoreOld() {
                         reject(new Error('bad'));
                         return;
                     }
+                    if (j.alert)
+                        window.__flash_restore_alert = j.alert;
                     resolve();
                 };
                 xhr.open('POST', '/flash/restore');
@@ -930,6 +932,8 @@ async function flashRestoreOld() {
         }
 
         setFlashStatusOld('Done.');
+        alert(window.__flash_restore_alert || 'Backup restore completed.');
+        window.__flash_restore_alert = '';
     } catch (e) {
         setFlashStatusOld('Error: ' + (e && e.message ? e.message : String(e)));
     }

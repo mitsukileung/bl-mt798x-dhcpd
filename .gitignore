@@ -9,6 +9,7 @@
 *.lex.c
 *.tab.*
 *.bin
+*.fip
 *.srec
 *.pyc
 *.mkimage

@@ -8,7 +8,7 @@
 	#address-cells = <1>;
 	#size-cells = <1>;
 	model = "Zbtlink ZBT-Z8103AX-C";
-	compatible = "zbtlink,zbt-z8103ax-c", "mediatek,mt7981", "mediatek,mt7981-rfb";
+	compatible = "mediatek,mt7981", "mediatek,mt7981-rfb";
 
 	chosen {
 		stdout-path = &uart0;

@@ -91,6 +91,36 @@ config WEBUI_FAILSAFE_ENV
 	  Enable environment variable management (list/add/delete/reset/restore)
 	  in the failsafe Web UI.
 
+config WEBUI_FAILSAFE_ENV_CUSTOM_ENV
+	bool "Load custom env once on first access"
+	default n
+	depends on WEBUI_FAILSAFE_ENV
+	help
+	  When enabled, the failsafe environment manager will append the
+	  variables from defenvs/custom_env into the live environment once,
+	  then persist the result. Existing variables are preserved and a
+	  marker variable prevents repeated application.
+
+config WEBUI_FAILSAFE_ENV_CUSTOM_ENV_FILE
+	string "Custom env file path"
+	default "defenvs/custom_env"
+	depends on WEBUI_FAILSAFE_ENV_CUSTOM_ENV
+	help
+	  Path to the environment text file to use when applying the one-time
+	  custom environment. The file path is interpreted relative to the
+	  U-Boot source tree. The default is "defenvs/custom_env". When this
+	  option is changed, the generated header used by the build system will
+	  be regenerated from the selected file.
+
+config WEBUI_FAILSAFE_ENV_DEFAULT_GLBTN_KEY
+	bool "Auto-create default glbtn_key when missing"
+	default y
+	depends on WEBUI_FAILSAFE_ENV && CMD_GL_BTN
+	help
+	  When enabled, failsafe environment API will automatically create
+	  and persist glbtn_key=reset,wps,mesh if glbtn_key does not exist.
+	  Existing glbtn_key values are never overwritten.
+
 config WEBUI_FAILSAFE_CONSOLE
 	bool "Enable failsafe Web console (DANGEROUS)"
 	select CONSOLE_RECORD

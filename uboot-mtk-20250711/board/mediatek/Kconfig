@@ -287,6 +287,11 @@ config MEDIATEK_MULTI_MTD_LAYOUT
 	depends on !MTK_DUAL_BOOT
 	default n
 
+config MEDIATEK_MTD_LAYOUT_PRINT
+	bool "Print mtd layout information during boot"
+	depends on MEDIATEK_MULTI_MTD_LAYOUT
+	default n
+
 config MTD_VERIFY_FDT
 	bool "Enable mtd device boot Linux FDT verification"
 	depends on MTD

@@ -1471,10 +1471,12 @@ void flash_handler(enum httpd_uri_handler_status status,
 		if (ret)
 			goto io_err;
 
-		json = malloc(96);
+		json = malloc(160);
 		if (!json)
 			goto oom;
-		snprintf(json, 96, "{\"ok\":true,\"restored\":%zu}\n", len);
+		snprintf(json, 160,
+			 "{\"ok\":true,\"restored\":%zu,\"alert\":\"Backup restore completed.\"}\n",
+			 len);
 		flash_reply_json(response, 200, json, json);
 		return;
 	}

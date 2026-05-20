@@ -951,6 +951,9 @@ static const struct spinand_manufacturer *spinand_manufacturers[] = {
 #ifdef CONFIG_MTD_SPI_NAND_WINBOND
 	&winbond_spinand_manufacturer,
 #endif
+#ifdef CONFIG_MTD_SPI_NAND_WODPOSIT
+	&wodposit_spinand_manufacturer,
+#endif
 #ifdef CONFIG_MTD_SPI_NAND_XINCUN
 	&xincun_spinand_manufacturer,
 #endif
@@ -1274,6 +1277,7 @@ finish:
 
 	if (check_ret) {
 		dev_err(dev, "CASN page check failed\n");
+		dev_err(dev, "Your SPI NAND might not support CASN, or the CASN page is corrupted.\n");
 		return check_ret;
 	}
 

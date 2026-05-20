@@ -449,6 +449,7 @@ form {
 }
 
 .field label {
+    margin-top: 10px;
     font-size: 12px;
     color: var(--muted);
 }
@@ -911,8 +912,7 @@ ul {
 }
 
 .console-status {
-    margin-top: 10px;
-    font-size: 12px;
+    font-size: 14px;
     color: var(--muted);
     white-space: pre-wrap;
 }

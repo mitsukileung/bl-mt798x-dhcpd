@@ -1674,6 +1674,8 @@ async function flashRestore() {
                     reject(new Error("bad"));
                     return;
                 }
+                if (j.alert)
+                    window.__flash_restore_alert = j.alert;
                 resolve();
             };
             xhr.open("POST", "/flash/restore");
@@ -1729,6 +1731,8 @@ async function flashRestore() {
 
         flashSetProgress(100);
         flashSetStatus(t("flash.status.done"));
+        alert(t("flash.status.restored", window.__flash_restore_alert || "Backup restore completed."));
+        window.__flash_restore_alert = "";
     } catch (e) {
         flashSetStatus(t("flash.status.error") + " " + (e && e.message ? e.message : String(e)))
     }
