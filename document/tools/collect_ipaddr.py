@@ -116,19 +116,9 @@ def render_md(entries, outpath):
 
 		if not non_default:
 			lines.append(
-				f"All {len(filtered)} configuration files use the default `CONFIG_IPADDR={DEFAULT_IPADDR}`.\n\n"
+				f"All {len(filtered)} configuration files use the default `CONFIG_IPADDR={DEFAULT_IPADDR}` "
+				f"({default_count} file(s)).\n\n"
 			)
-			lines.append("| Filename | Model | IPADDR | USE_IPADDR | NET_FORCE_IPADDR |\n")
-			lines.append("|---|---|---|---|---|\n")
-			for e in filtered:
-				fname = f'`{e["filename"]}`'
-				model = e["model"] or "-"
-				use_ipaddr = "y" if e["use_ipaddr"] else "-"
-				net_force_ipaddr = "y" if e["net_force_ipaddr"] else "-"
-				lines.append(
-					f"| {fname} | {model} | {e['ipaddr']} | {use_ipaddr} | {net_force_ipaddr} |\n"
-				)
-			lines.append("\n")
 			continue
 
 		lines.append("| Filename | Model | IPADDR | USE_IPADDR | NET_FORCE_IPADDR |\n")

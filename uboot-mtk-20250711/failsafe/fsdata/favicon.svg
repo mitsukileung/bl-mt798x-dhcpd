@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
-<svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="192px" height="192px" viewBox="0 0 192 192" enable-background="new 0 0 192 192" xml:space="preserve">  <image id="image0" width="192" height="192" x="0" y="0"
+<svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="192px" height="192px" viewBox="0 0 192 192" enable-background="new 0 0 192 192" xml:space="preserve">
+    <style type="text/css"><![CDATA[
+        @media (prefers-color-scheme: dark) {
+            #image0 {
+                filter: invert(1) hue-rotate(180deg) brightness(1.05) contrast(1.05);
+            }
+        }
+    ]]></style>
+    <image id="image0" width="192" height="192" x="0" y="0"
     xlink:href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAQAAAD41aSMAAAAIGNIUk0AAHomAACAhAAA+gAAAIDo
 AAB1MAAA6mAAADqYAAAXcJy6UTwAAAACYktHRAD/h4/MvwAAGYRJREFUeNrdXWlgVNXZft57Z7KQ
 QAICsokgUTCQyTIECGgNVkA/W8Rq6i6gtdJa61IrIKCgopZ+FT/rvgAiQm2Kigrigoa6RJZJIAlR

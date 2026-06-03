@@ -8,351 +8,485 @@
  * You may not use, copy, modify or distribute this file except in compliance with the license agreement.
  */
 
-function normalizeLang(n) {
-    if (!n) return "en";
-    var t = String(n).toLowerCase();
-    return t.indexOf("zh") === 0 ? "zh-cn" : "en"
+// Project/author constants (centralized for reuse)
+const AUTHOR_HANDLE = "Yuzhii0718";
+const AUTHOR_DISPLAY = "💡Yuzhii";
+const UBOOT_VERSION = 'UBOOT-MTK-20250711';
+const GITHUB_USER_URL = "https://github.com/Yuzhii0718/";
+const PROJECT_REPO_URL = "https://github.com/Yuzhii0718/bl-mt798x-dhcpd";
+
+// Single global state container (defined eagerly so early helpers can read it).
+var APP_STATE = {
+    lang: "en",
+    theme: "auto",
+    page: "",
+};
+
+function normalizeLang(input) {
+    if (!input) return "en";
+    const lowerCaseLanguage = String(input).toLowerCase();
+    if (lowerCaseLanguage.indexOf("zh") === 0) return "zh-cn";
+    if (lowerCaseLanguage.indexOf("ru") === 0 || lowerCaseLanguage.indexOf("be") === 0 || lowerCaseLanguage.indexOf("uk") === 0) return "ru";
+    return "en";
 }
 
 function detectLang() {
-    var t, n;
     try {
-        if (t = localStorage.getItem("lang"), t) return normalizeLang(t)
-    } catch (i) { }
-    return n = [], navigator.languages && navigator.languages.length ? n = navigator.languages : navigator.language && (n = [navigator.language]), normalizeLang(n[0])
+        const storedLang = localStorage.getItem("lang");
+        if (storedLang) return normalizeLang(storedLang);
+    } catch { /* ignore */ }
+    const candidates = navigator.languages?.length
+        ? navigator.languages
+        : (navigator.language ? [navigator.language] : []);
+    return normalizeLang(candidates[0]);
 }
 
 function detectTheme() {
     try {
-        var n = localStorage.getItem("theme");
-        if (n) return n
-    } catch (t) { }
-    return "auto"
+        return localStorage.getItem("theme") ?? "auto";
+    } catch {
+        return "auto";
+    }
 }
 
-function normalizeThemeMode(n) {
-    if (!n) return "auto";
-    var t = String(n).toLowerCase().trim();
-    return t === "light" || t === "dark" || t === "auto" ? t : "auto";
+function normalizeThemeMode(input) {
+    if (!input) return "auto";
+    const normalizedMode = String(input).toLowerCase().trim();
+    return normalizedMode === "light" || normalizedMode === "dark" || normalizedMode === "auto" ? normalizedMode : "auto";
 }
 
 function isI18nAvailable() {
-    return typeof I18N !== "undefined" && I18N
+    return typeof I18N !== "undefined" && I18N;
 }
 
 function isI18nEnabled() {
-    return APP_STATE.i18nEnabled !== false
+    return APP_STATE.i18nEnabled !== false;
 }
 
-function t(n, fallback) {
-    var r = APP_STATE.lang || "en";
-    if (!isI18nEnabled() || !isI18nAvailable())
-        return fallback !== undefined ? fallback : n;
-    return I18N[r] && I18N[r][n] !== undefined ? I18N[r][n] : I18N.en && I18N.en[n] !== undefined ? I18N.en[n] : (fallback !== undefined ? fallback : n)
+function t(key, fallback) {
+    const languageCode = APP_STATE.lang || "en";
+    const defaultValue = fallback !== undefined ? fallback : key;
+    if (!isI18nEnabled() || !isI18nAvailable()) return defaultValue;
+    return I18N[languageCode]?.[key] ?? I18N.en?.[key] ?? defaultValue;
 }
 
-function applyI18n(n) {
-    var s = n || document;
-    var enabled = isI18nEnabled() && isI18nAvailable();
-    var h = s.querySelectorAll("[data-i18n]");
-    for (var o = 0; o < h.length; o++) {
-        var el = h[o];
-        var key = el.getAttribute("data-i18n");
-        if (!el.hasAttribute("data-i18n-fallback"))
-            el.setAttribute("data-i18n-fallback", el.textContent || "");
-        var fallback = el.getAttribute("data-i18n-fallback") || "";
-        el.textContent = enabled ? t(key, fallback) : fallback;
+function applyI18n(rootNode) {
+    const scope = rootNode || document;
+    const enabled = isI18nEnabled() && isI18nAvailable();
+
+    for (const node of scope.querySelectorAll("[data-i18n]")) {
+        const key = node.getAttribute("data-i18n");
+        if (!node.hasAttribute("data-i18n-fallback")) {
+            node.setAttribute("data-i18n-fallback", node.textContent || "");
+        }
+        const fallback = node.getAttribute("data-i18n-fallback") || "";
+        node.textContent = enabled ? t(key, fallback) : fallback;
     }
-    var u = s.querySelectorAll("[data-i18n-html]");
-    for (var i = 0; i < u.length; i++) {
-        var elh = u[i];
-        var keyh = elh.getAttribute("data-i18n-html");
-        if (!elh.hasAttribute("data-i18n-html-fallback"))
-            elh.setAttribute("data-i18n-html-fallback", elh.innerHTML || "");
-        var fallbackh = elh.getAttribute("data-i18n-html-fallback") || "";
-        elh.innerHTML = enabled ? t(keyh, fallbackh) : fallbackh;
+
+    for (const node of scope.querySelectorAll("[data-i18n-html]")) {
+        const key = node.getAttribute("data-i18n-html");
+        if (!node.hasAttribute("data-i18n-html-fallback")) {
+            node.setAttribute("data-i18n-html-fallback", node.innerHTML || "");
+        }
+        const fallback = node.getAttribute("data-i18n-html-fallback") || "";
+        node.innerHTML = enabled ? t(key, fallback) : fallback;
     }
-    var f = s.querySelectorAll("[data-i18n-attr]");
-    for (var r = 0; r < f.length; r++) {
-        var el2 = f[r];
-        var a = el2.getAttribute("data-i18n-attr");
-        if (!a) continue;
-        var e = a.split(":");
-        if (e.length < 2) continue;
-        var v = e[0];
-        var y = e.slice(1).join(":");
-        var fbAttr = "data-i18n-attr-fallback-" + v;
-        if (!el2.hasAttribute(fbAttr))
-            el2.setAttribute(fbAttr, el2.getAttribute(v) || "");
-        var fallbackAttr = el2.getAttribute(fbAttr) || "";
-        el2.setAttribute(v, enabled ? t(y, fallbackAttr) : fallbackAttr)
+
+    for (const node of scope.querySelectorAll("[data-i18n-attr]")) {
+        const spec = node.getAttribute("data-i18n-attr");
+        if (!spec) continue;
+        const [attrName, ...keyParts] = spec.split(":");
+        if (!attrName || keyParts.length === 0) continue;
+        const key = keyParts.join(":");
+        const fallbackKey = `data-i18n-attr-fallback-${attrName}`;
+        if (!node.hasAttribute(fallbackKey)) {
+            node.setAttribute(fallbackKey, node.getAttribute(attrName) || "");
+        }
+        const fallback = node.getAttribute(fallbackKey) || "";
+        node.setAttribute(attrName, enabled ? t(key, fallback) : fallback);
     }
 }
 
-function setLang(n) {
-    APP_STATE.lang = normalizeLang(n);
+function setLang(language) {
+    APP_STATE.lang = normalizeLang(language);
     try {
-        localStorage.setItem("lang", APP_STATE.lang)
-    } catch (t) { }
+        localStorage.setItem("lang", APP_STATE.lang);
+    } catch { /* ignore */ }
     applyI18n(document);
-    typeof backupRefreshI18n == "function" && APP_STATE.page === "backup" && backupRefreshI18n();
-    typeof renderSysInfo == "function" && renderSysInfo();
-    updateDocumentTitle()
+    if (APP_STATE.page === "backup" && typeof backupRefreshI18n === "function") backupRefreshI18n();
+    if (APP_STATE.page === "flash"  && typeof flashRefreshI18n  === "function") flashRefreshI18n();
+    if (typeof renderSysInfo === "function") renderSysInfo();
+    updateDocumentTitle();
 }
 
 function updateThemeSelect() {
-    var sel = document.getElementById("theme_select");
-    if (!sel) return;
-    sel.value = APP_STATE.theme || "auto";
+    const themeSelect = document.getElementById("theme_select");
+    if (!themeSelect) return;
+    themeSelect.value = APP_STATE.theme || "auto";
 }
 
-function setTheme(n, opts) {
-    var o = opts || {};
-    var persistLocal = o.persistLocal !== false;
-    var persistEnv = o.persistEnv === true;
-    var silent = o.silent === true;
-    APP_STATE.theme = normalizeThemeMode(n || "auto");
-    try {
-        persistLocal && localStorage.setItem("theme", APP_STATE.theme)
-    } catch (i) { }
-    var t = document.documentElement;
-    if (window.__failsafeThemeApplyMode) {
-        window.__failsafeThemeApplyMode(APP_STATE.theme, { silent: silent });
-    } else {
-        APP_STATE.theme === "auto" ? t.removeAttribute("data-theme") : t.setAttribute("data-theme", APP_STATE.theme);
+function setTheme(themeMode, options = {}) {
+    const { persistLocal = true, persistEnv = false, silent = false } = options;
+    APP_STATE.theme = normalizeThemeMode(themeMode || "auto");
+
+    if (persistLocal) {
+        try { localStorage.setItem("theme", APP_STATE.theme); }
+        catch { /* ignore */ }
     }
+
+    const rootElement = document.documentElement;
+    if (typeof window.__failsafeThemeApplyMode === "function") {
+        window.__failsafeThemeApplyMode(APP_STATE.theme, { silent });
+    } else if (APP_STATE.theme === "auto") {
+        rootElement.removeAttribute("data-theme");
+    } else {
+        rootElement.setAttribute("data-theme", APP_STATE.theme);
+    }
+
     updateThemeSelect();
-    persistEnv && saveThemeMode(APP_STATE.theme);
+    if (persistEnv) saveThemeMode(APP_STATE.theme);
 }
 
-var THEME_COLOR_ENV_KEY = "failsafe_theme_color";
-var THEME_COLOR_CACHE_KEY = "failsafe_theme_color_cache";
-var ACCENT_PRESETS = ["#2563eb", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#a855f7"];
-var THEME_MODE_ENV_KEY = "failsafe_theme_mode";
+const THEME_COLOR_ENV_KEY = "failsafe_theme_color";
+const THEME_COLOR_CACHE_KEY = "failsafe_theme_color_cache";
+const THEME_COLOR_RAINBOW = "rainbow";
+const ACCENT_PRESETS = ["#2563eb", "#0ea5e9", "#14b8a6", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#a855f7"];
+const THEME_MODE_ENV_KEY = "failsafe_theme_mode";
+const THEME_DARK_VARIANT_ENV_KEY = "failsafe_theme_dark_variant";
+const THEME_DARK_VARIANT_CACHE_KEY = "failsafe_theme_dark_variant_cache";
+
+function normalizeDarkVariant(input) {
+    if (input == null) return "";
+    const value = String(input).trim().toLowerCase();
+    return value === "amoled" ? "amoled" : "";
+}
+
+const HEX3_RE = /^[0-9a-fA-F]{3}$/;
+const HEX6_RE = /^[0-9a-fA-F]{6}$/;
 
 function normalizeHexColor(input) {
-    var s, hex;
-    if (!input) return null;
-    s = String(input).trim();
-    if (s === "") return null;
-    if (s[0] === "#") s = s.slice(1);
-    if (!/^[0-9a-fA-F]{3}$/.test(s) && !/^[0-9a-fA-F]{6}$/.test(s)) return null;
-    if (s.length === 3) {
-        hex = "#" + s[0] + s[0] + s[1] + s[1] + s[2] + s[2];
-    } else {
-        hex = "#" + s;
-    }
+    if (input == null) return null;
+    let value = String(input).trim();
+    if (!value) return null;
+    if (value[0] === "#") value = value.slice(1);
+    if (!HEX3_RE.test(value) && !HEX6_RE.test(value)) return null;
+    const hex = value.length === 3
+        ? `#${value[0]}${value[0]}${value[1]}${value[1]}${value[2]}${value[2]}`
+        : `#${value}`;
     return hex.toLowerCase();
 }
 
 function hexToRgb(hex) {
-    var n = normalizeHexColor(hex);
-    if (!n) return null;
+    const normalizedHex = normalizeHexColor(hex);
+    if (!normalizedHex) return null;
     return {
-        r: parseInt(n.slice(1, 3), 16),
-        g: parseInt(n.slice(3, 5), 16),
-        b: parseInt(n.slice(5, 7), 16)
+        r: parseInt(normalizedHex.slice(1, 3), 16),
+        g: parseInt(normalizedHex.slice(3, 5), 16),
+        b: parseInt(normalizedHex.slice(5, 7), 16),
     };
 }
 
+function pickRandomPreset() {
+    return ACCENT_PRESETS[Math.floor(Math.random() * ACCENT_PRESETS.length)];
+}
+
 function applyAccentVars(color) {
-    var norm = normalizeHexColor(color);
-    var rgb, root, lighter;
-    if (!norm) return false;
-    rgb = hexToRgb(norm);
+    if (color === THEME_COLOR_RAINBOW) {
+        color = pickRandomPreset();
+    }
+    const normalizedColor = normalizeHexColor(color);
+    if (!normalizedColor) return false;
+    const rgb = hexToRgb(normalizedColor);
     if (!rgb) return false;
-    root = document.documentElement;
-    root.style.setProperty("--primary", norm);
-    root.style.setProperty("--primary-rgb", rgb.r + ", " + rgb.g + ", " + rgb.b);
-    lighter = blendColor(norm, "#ffffff", 0.28);
-    root.style.setProperty("--primary-2", lighter);
-    ensureThemeColorMeta(norm);
+
+    const rootStyle = document.documentElement.style;
+    rootStyle.setProperty("--primary", normalizedColor);
+    rootStyle.setProperty("--primary-rgb", `${rgb.r}, ${rgb.g}, ${rgb.b}`);
+    rootStyle.setProperty("--primary-2", blendColor(normalizedColor, "#ffffff", 0.28));
+    ensureThemeColorMeta(normalizedColor);
     return true;
 }
 
-function blendColor(hex, targetHex, t) {
-    var a = hexToRgb(hex);
-    var b = hexToRgb(targetHex);
-    if (!a || !b) return hex;
-    var r = Math.round(a.r + (b.r - a.r) * t);
-    var g = Math.round(a.g + (b.g - a.g) * t);
-    var b2 = Math.round(a.b + (b.b - a.b) * t);
-    return "#" + r.toString(16).padStart(2, "0") + g.toString(16).padStart(2, "0") + b2.toString(16).padStart(2, "0");
+function blendColor(sourceHex, targetHex, ratio) {
+    const a = hexToRgb(sourceHex);
+    const b = hexToRgb(targetHex);
+    if (!a || !b) return sourceHex;
+    const mix = (x, y) => Math.round(x + (y - x) * ratio).toString(16).padStart(2, "0");
+    return `#${mix(a.r, b.r)}${mix(a.g, b.g)}${mix(a.b, b.b)}`;
 }
 
 function ensureThemeColorMeta(color) {
     if (!color) return;
-    var meta = document.querySelector("meta[name='theme-color']");
+    let meta = document.querySelector("meta[name='theme-color']");
     if (!meta) {
         meta = document.createElement("meta");
         meta.setAttribute("name", "theme-color");
-        document.head && document.head.appendChild(meta);
+        document.head?.appendChild(meta);
     }
     meta.setAttribute("content", color);
 }
 
 function updateAccentControls(color) {
-    var picker = document.getElementById("accent_color_picker");
-    var input = document.getElementById("accent_color_input");
-    var norm = normalizeHexColor(color);
-    var swatches, i, sw;
-    if (picker && norm) picker.value = norm;
-    if (input && norm) input.value = norm;
-    swatches = document.querySelectorAll(".color-swatch");
-    for (i = 0; i < swatches.length; i++) {
-        sw = swatches[i];
-        if (!sw || !sw.dataset) continue;
-        if (norm && String(sw.dataset.color || "").toLowerCase() === norm)
-            sw.classList.add("active");
-        else
-            sw.classList.remove("active");
+    const isRainbow = color === THEME_COLOR_RAINBOW;
+    const normalizedColor = isRainbow ? null : normalizeHexColor(color);
+    const colorPicker = document.getElementById("accent_color_picker");
+    const colorInput  = document.getElementById("accent_color_input");
+
+    if (colorPicker) {
+        if (isRainbow) colorPicker.value = "#000000";
+        else if (normalizedColor) colorPicker.value = normalizedColor;
+    }
+    if (colorInput) {
+        if (isRainbow) colorInput.value = "";
+        else if (normalizedColor) colorInput.value = normalizedColor;
+    }
+
+    for (const swatch of document.querySelectorAll(".color-swatch")) {
+        const presetColor = String(swatch.dataset?.color ?? "").toLowerCase();
+        swatch.classList.toggle("active", !!normalizedColor && presetColor === normalizedColor);
+    }
+
+    /* rainbow swatch active state */
+    const rainbowSwatch = document.querySelector(".color-swatch-rainbow");
+    if (rainbowSwatch) {
+        rainbowSwatch.classList.toggle("active", isRainbow);
     }
 }
 
 function applyAccentColor(color) {
-    var ok = applyAccentVars(color);
-    if (!ok) return false;
+    const isApplied = applyAccentVars(color);
+    if (!isApplied) return false;
+    /* When rainbow is selected, update controls with the original raw value
+     * so the rainbow swatch highlights correctly. */
     updateAccentControls(color);
     return true;
 }
 
-(function applyAccentFromCache() {
-    try {
-        var cached = localStorage.getItem(THEME_COLOR_CACHE_KEY);
-        if (cached) applyAccentVars(cached);
-    } catch (e) { }
-})();
+try {
+    const cachedColor = localStorage.getItem(THEME_COLOR_CACHE_KEY);
+    if (cachedColor) {
+        if (cachedColor === THEME_COLOR_RAINBOW) {
+            applyAccentVars(pickRandomPreset());
+        } else {
+            applyAccentVars(cachedColor);
+        }
+    }
+} catch { /* ignore */ }
 
 async function saveThemeColor(color) {
-    var norm = normalizeHexColor(color);
-    if (!norm) return;
+    if (color === THEME_COLOR_RAINBOW) {
+        try { localStorage.setItem(THEME_COLOR_CACHE_KEY, THEME_COLOR_RAINBOW); }
+        catch { /* ignore */ }
+        try {
+            const formData = new FormData();
+            formData.append("color", THEME_COLOR_RAINBOW);
+            await fetch("/theme/set", { method: "POST", body: formData });
+        } catch { /* network errors silently dropped */ }
+        return;
+    }
+    const normalizedColor = normalizeHexColor(color);
+    if (!normalizedColor) return;
+    try { localStorage.setItem(THEME_COLOR_CACHE_KEY, normalizedColor); }
+    catch { /* ignore */ }
     try {
-        localStorage.setItem(THEME_COLOR_CACHE_KEY, norm);
-    } catch (e) { }
-    try {
-        var fd = new FormData();
-        fd.append("color", norm);
-        await fetch("/theme/set", { method: "POST", body: fd });
-    } catch (e) { }
+        const formData = new FormData();
+        formData.append("color", normalizedColor);
+        await fetch("/theme/set", { method: "POST", body: formData });
+    } catch { /* network errors silently dropped */ }
 }
 
 async function saveThemeMode(theme) {
-    var norm = normalizeThemeMode(theme);
+    const normalizedMode = normalizeThemeMode(theme);
+    try { localStorage.setItem("theme", normalizedMode); }
+    catch { /* ignore */ }
     try {
-        localStorage.setItem("theme", norm);
-    } catch (e) { }
-    try {
-        var fd = new FormData();
-        fd.append("theme", norm);
-        await fetch("/theme/set", { method: "POST", body: fd });
-    } catch (e) { }
+        const formData = new FormData();
+        formData.append("theme", normalizedMode);
+        await fetch("/theme/set", { method: "POST", body: formData });
+    } catch { /* network errors silently dropped */ }
 }
 
 async function loadThemeColor() {
-    var current = null;
-    var fromEnv = false;
+    let currentColor = null;
+    let loadedFromEnv = false;
+    let isRainbow = false;
     try {
-        var r = await fetch("/theme/get", { method: "GET" });
-        if (r && r.ok) {
-            var j = await r.json();
-            if (j && j.color) {
-                current = normalizeHexColor(j.color);
-                fromEnv = !!current;
+        const response = await fetch("/theme/get", { method: "GET" });
+        if (response?.ok) {
+            const payload = await response.json();
+            if (payload?.color === THEME_COLOR_RAINBOW) {
+                isRainbow = true;
+                loadedFromEnv = true;
+            } else {
+                currentColor = normalizeHexColor(payload?.color);
+                loadedFromEnv = !!currentColor;
             }
         }
-    } catch (e) { }
+    } catch { /* ignore */ }
 
-    if (!current) {
+    if (isRainbow && loadedFromEnv) {
+        /* server says rainbow — trigger a re-randomize and apply */
+        applyAccentColor(THEME_COLOR_RAINBOW);
+        try { localStorage.setItem(THEME_COLOR_CACHE_KEY, THEME_COLOR_RAINBOW); }
+        catch { /* ignore */ }
+        return;
+    }
+
+    if (!currentColor) {
         try {
-            current = (getComputedStyle(document.documentElement)
-                .getPropertyValue("--primary") || "").trim();
-            current = normalizeHexColor(current);
-        } catch (e2) { }
+            const cssValue = getComputedStyle(document.documentElement).getPropertyValue("--primary") ?? "";
+            currentColor = normalizeHexColor(cssValue.trim());
+        } catch { /* ignore */ }
     }
 
-    if (current) {
-        if (fromEnv)
-            applyAccentColor(current);
-        if (fromEnv) {
-            try {
-                localStorage.setItem(THEME_COLOR_CACHE_KEY, current);
-            } catch (e3) { }
-        }
-        updateAccentControls(current);
+    if (!currentColor) return;
+
+    if (loadedFromEnv) {
+        applyAccentColor(currentColor);
+        try { localStorage.setItem(THEME_COLOR_CACHE_KEY, currentColor); }
+        catch { /* ignore */ }
     }
+    updateAccentControls(currentColor);
 }
 
 async function loadThemeMode() {
-    var mode = null;
+    let mode = null;
     try {
-        var r = await fetch("/theme/get", { method: "GET" });
-        if (r && r.ok) {
-            var j = await r.json();
-            if (j && j.theme) mode = normalizeThemeMode(j.theme);
+        const response = await fetch("/theme/get", { method: "GET" });
+        if (response?.ok) {
+            const payload = await response.json();
+            if (payload?.theme) mode = normalizeThemeMode(payload.theme);
         }
-    } catch (e) { }
+    } catch { /* ignore */ }
 
-    if (mode) {
-        setTheme(mode, { persistEnv: false, persistLocal: true, silent: true });
+    if (mode) setTheme(mode, { persistEnv: false, persistLocal: true, silent: true });
+}
+
+function updateDarkVariantControl(variant) {
+    const select = document.getElementById("settings_dark_variant");
+    if (!select) return;
+    select.value = normalizeDarkVariant(variant);
+}
+
+function applyDarkVariant(variant, options = {}) {
+    const { persistLocal = true, silent = false } = options;
+    const normalized = normalizeDarkVariant(variant);
+
+    if (persistLocal) {
+        try {
+            if (normalized) localStorage.setItem(THEME_DARK_VARIANT_CACHE_KEY, normalized);
+            else localStorage.removeItem(THEME_DARK_VARIANT_CACHE_KEY);
+        } catch { /* ignore */ }
     }
+
+    if (typeof window.__failsafeThemeApplyDarkVariant === "function") {
+        window.__failsafeThemeApplyDarkVariant(normalized, { silent });
+    } else {
+        const root = document.documentElement;
+        if (normalized) root.setAttribute("data-theme-dark", normalized);
+        else root.removeAttribute("data-theme-dark");
+    }
+
+    updateDarkVariantControl(normalized);
+}
+
+async function saveDarkVariant(variant) {
+    const normalized = normalizeDarkVariant(variant);
+    /* server expects "standard" or empty to clear; we send "standard" so the
+     * intent is explicit in transit, the backend turns it back into unset */
+    const wire = normalized || "standard";
+    try {
+        const formData = new FormData();
+        formData.append("dark_variant", wire);
+        await fetch("/theme/set", { method: "POST", body: formData });
+    } catch { /* network errors silently dropped */ }
+}
+
+async function loadDarkVariant() {
+    let variant = null;
+    try {
+        const response = await fetch("/theme/get", { method: "GET" });
+        if (response?.ok) {
+            const payload = await response.json();
+            variant = normalizeDarkVariant(payload?.dark_variant);
+        }
+    } catch { /* ignore */ }
+
+    /* always update UI even when env-side is empty (need to clear stale select) */
+    applyDarkVariant(variant ?? "", { persistLocal: true, silent: true });
 }
 
 function appendAccentControls(container) {
     if (!container) return;
 
-    var row = document.createElement("div");
+    const row = document.createElement("div");
     row.className = "control-row control-row-color";
 
-    var label = document.createElement("div");
-    label.setAttribute("data-i18n", "control.accent");
-    label.textContent = t("control.accent");
-    row.appendChild(label);
+    const accentLabel = document.createElement("div");
+    accentLabel.setAttribute("data-i18n", "control.accent");
+    accentLabel.textContent = t("control.accent");
+    row.appendChild(accentLabel);
 
-    var picker = document.createElement("div");
+    const picker = document.createElement("div");
     picker.className = "color-picker";
 
-    var presets = document.createElement("div");
+    const presets = document.createElement("div");
     presets.className = "color-presets";
-    ACCENT_PRESETS.forEach(function (c) {
-        var sw = document.createElement("button");
-        sw.type = "button";
-        sw.className = "color-swatch";
-        sw.dataset.color = c.toLowerCase();
-        sw.style.backgroundColor = c;
-        sw.onclick = function () {
-            applyAccentColor(c);
-            saveThemeColor(c);
-        };
-        presets.appendChild(sw);
-    });
+    for (const presetColor of ACCENT_PRESETS) {
+        const swatchButton = document.createElement("button");
+        swatchButton.type = "button";
+        swatchButton.className = "color-swatch";
+        swatchButton.dataset.color = presetColor.toLowerCase();
+        swatchButton.style.backgroundColor = presetColor;
+        swatchButton.setAttribute("aria-label", `Accent ${presetColor}`);
+        swatchButton.addEventListener("click", () => {
+            applyAccentColor(presetColor);
+            saveThemeColor(presetColor);
+        });
+        presets.appendChild(swatchButton);
+    }
 
-    var inputs = document.createElement("div");
+    /* rainbow swatch */
+    const rainbowSwatch = document.createElement("button");
+    rainbowSwatch.type = "button";
+    rainbowSwatch.className = "color-swatch color-swatch-rainbow";
+    rainbowSwatch.dataset.color = THEME_COLOR_RAINBOW;
+    rainbowSwatch.setAttribute("data-i18n-attr", "title:theme.color.rainbow");
+    rainbowSwatch.title = t("theme.color.rainbow");
+    rainbowSwatch.setAttribute("aria-label", t("theme.color.rainbow"));
+    rainbowSwatch.addEventListener("click", () => {
+        applyAccentColor(THEME_COLOR_RAINBOW);
+        saveThemeColor(THEME_COLOR_RAINBOW);
+    });
+    presets.appendChild(rainbowSwatch);
+
+    const inputs = document.createElement("div");
     inputs.className = "color-inputs";
 
-    var text = document.createElement("input");
-    text.type = "text";
-    text.id = "accent_color_input";
-    text.setAttribute("data-i18n-attr", "placeholder:theme.color.placeholder");
-    text.placeholder = t("theme.color.placeholder");
-    text.addEventListener("change", function () {
-        var norm = normalizeHexColor(text.value);
-        if (!norm) return;
-        applyAccentColor(norm);
-        saveThemeColor(norm);
+    const colorTextInput = document.createElement("input");
+    colorTextInput.type = "text";
+    colorTextInput.id = "accent_color_input";
+    colorTextInput.setAttribute("data-i18n-attr", "placeholder:theme.color.placeholder");
+    colorTextInput.placeholder = t("theme.color.placeholder");
+    colorTextInput.addEventListener("change", () => {
+        const normalizedColor = normalizeHexColor(colorTextInput.value);
+        if (!normalizedColor) return;
+        applyAccentColor(normalizedColor);
+        saveThemeColor(normalizedColor);
     });
 
-    var color = document.createElement("input");
-    color.type = "color";
-    color.id = "accent_color_picker";
-    color.setAttribute("data-i18n-attr", "title:theme.color.custom");
-    color.title = t("theme.color.custom");
-    color.addEventListener("input", function () {
-        applyAccentColor(color.value);
-        saveThemeColor(color.value);
+    const colorPicker = document.createElement("input");
+    colorPicker.type = "color";
+    colorPicker.id = "accent_color_picker";
+    colorPicker.setAttribute("data-i18n-attr", "title:theme.color.custom");
+    colorPicker.title = t("theme.color.custom");
+    colorPicker.addEventListener("input", () => {
+        applyAccentColor(colorPicker.value);
+        saveThemeColor(colorPicker.value);
     });
 
-    inputs.appendChild(text);
-    inputs.appendChild(color);
+    inputs.appendChild(colorTextInput);
+    inputs.appendChild(colorPicker);
 
     picker.appendChild(presets);
     picker.appendChild(inputs);
@@ -362,382 +496,474 @@ function appendAccentControls(container) {
 }
 
 function ensureFavicon() {
-    var link = document.querySelector("link[rel='icon']");
+    let link = document.querySelector("link[rel='icon']");
     if (!link) {
         link = document.createElement("link");
         link.setAttribute("rel", "icon");
         link.setAttribute("type", "image/svg+xml");
         link.setAttribute("href", "/favicon.svg");
-        document.head && document.head.appendChild(link);
-    } else {
+        document.head?.appendChild(link);
+    } else if (link.getAttribute("href") !== "/favicon.svg") {
         link.setAttribute("href", "/favicon.svg");
     }
 }
 
+const LOGO_CACHE_KEY = "failsafe_logo_dataurl";
+
+function getLogoSrc() {
+    try {
+        const cached = sessionStorage.getItem(LOGO_CACHE_KEY);
+        if (cached) return cached;
+    } catch { /* sessionStorage unavailable */ }
+
+    // Async populate cache for next page load
+    fetch("/favicon.svg")
+        .then((r) => r.ok ? r.blob() : Promise.reject())
+        .then((blob) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                if (typeof reader.result === "string" && reader.result.startsWith("data:image")) {
+                    try { sessionStorage.setItem(LOGO_CACHE_KEY, reader.result); } catch {}
+                }
+            };
+            reader.readAsDataURL(blob);
+        })
+        .catch(() => {});
+
+    return "/favicon.svg";
+}
+
 function updateDocumentTitle() {
-    if (!isI18nEnabled() || !isI18nAvailable())
+    if (!isI18nEnabled() || !isI18nAvailable() || !APP_STATE.page) return;
+
+    const titleKey = `${APP_STATE.page}.title`;
+    if (I18N[APP_STATE.lang]?.[titleKey]) {
+        document.title = t(titleKey);
         return;
-    if (APP_STATE.page) {
-        var n = APP_STATE.page + ".title";
-        if (I18N[APP_STATE.lang] && I18N[APP_STATE.lang][n]) {
-            document.title = t(n);
-            return
-        }
-        APP_STATE.page === "flashing" ? document.title = t("flashing.title.in_progress") : APP_STATE.page === "booting" && (document.title = t("booting.title.in_progress"))
+    }
+
+    if (APP_STATE.page === "flashing") {
+        document.title = t("flashing.title.in_progress");
+    } else if (APP_STATE.page === "booting") {
+        document.title = t("booting.title.in_progress");
     }
 }
 
 function ensureBranding() {
-    var t = document.getElementById("version"),
-        n, i;
-    t && ((n = t.nextElementSibling, n && n.classList && n.classList.contains("brand") && n.parentNode && n.parentNode.removeChild(n), t.querySelector && t.querySelector(".brand-inline")) || (i = document.createElement("span"), i.className = "brand-inline", i.textContent = "💡Yuzhii", t.appendChild(document.createTextNode(" ")), t.appendChild(i)))
-    if (!t) return;
-    if (t.querySelector && t.querySelector("#project-info")) return;
-    var m = document.createElement("div");
-    m.id = "project-info";
-    m.innerHTML = 'You can find more infomation about this project: <a href="https://github.com/Yuzhii0718/bl-mt798x-dhcpd" target="_blank">Github</a>';
-    t.appendChild(m);
+    const versionNode = document.getElementById("version");
+    if (!versionNode) return;
+
+    // Only remove sibling brand node if it exists (avoid DOM churn)
+    const nextSibling = versionNode.nextElementSibling;
+    if (nextSibling?.classList?.contains("brand")) {
+        nextSibling.remove();
+    }
+
+    // Ensure an inline brand label exists (check first to avoid re-creation)
+    if (!versionNode.querySelector?.(".brand-inline")) {
+        const brandNode = document.createElement("span");
+        brandNode.className = "brand-inline";
+        brandNode.textContent = AUTHOR_DISPLAY;
+        versionNode.append(" ", brandNode);
+    }
+
+    // Ensure project info block exists (don't duplicate)
+    if (versionNode.querySelector?.("#project-info")) return;
+    const projectInfo = document.createElement("div");
+    projectInfo.id = "project-info";
+    projectInfo.innerHTML = `You can find more infomation about this project: <a href="${PROJECT_REPO_URL}" target="_blank" rel="noopener">Github</a>`;
+    versionNode.appendChild(projectInfo);
 }
 
 function ensureSidebar() {
-    function o(n, i, r) {
-        var u = document.createElement("a"),
-            s, o, e, h;
-        return u.className = "nav-link", u.href = n, u.setAttribute("data-nav-id", r), s = document.createElement("span"), s.className = "dot", u.appendChild(s), o = document.createElement("span"), o.setAttribute("data-i18n", i), o.textContent = t(i), u.appendChild(o), e = n, e !== "/" && e.charAt(0) !== "/" && (e = "/" + e), h = e === f || e === "/" && (f === "/" || f === "/index.html"), h && u.classList.add("active"), u
+    const createNavLink = (path, i18nKey, navId) => {
+        const link = document.createElement("a");
+        link.className = "nav-link";
+        link.href = path;
+        link.setAttribute("data-nav-id", navId);
+
+        const iconSpan = document.createElement("span");
+        iconSpan.className = "dot";
+        link.appendChild(iconSpan);
+
+        const labelSpan = document.createElement("span");
+        labelSpan.setAttribute("data-i18n", i18nKey);
+        labelSpan.textContent = t(i18nKey);
+        link.appendChild(labelSpan);
+
+        // Normalize and check active
+        let normalizedPath = path;
+        if (normalizedPath !== "/" && normalizedPath.charAt(0) !== "/") normalizedPath = "/" + normalizedPath;
+        const isActive = normalizedPath === currentPath || (normalizedPath === "/" && (currentPath === "/" || currentPath === "/index.html"));
+        if (isActive) link.classList.add("active");
+        return link;
+    };
+
+    const sidebar = document.getElementById("sidebar");
+    if (!sidebar) return;
+
+    // Avoid re-rendering
+    if (sidebar.getAttribute("data-rendered") === "1") return;
+    sidebar.setAttribute("data-rendered", "1");
+
+    // Prepare current path
+    let currentPath = (location && location.pathname) ? location.pathname : "";
+    if (currentPath === "") currentPath = "/";
+
+    // Clear existing content
+    sidebar.innerHTML = "";
+
+    // Branding
+    const brandContainer = document.createElement("div");
+    brandContainer.className = "sidebar-brand";
+    const brandLogo = document.createElement("img");
+    brandLogo.className = "logo";
+    brandLogo.src = getLogoSrc();
+    brandLogo.alt = "";
+    brandLogo.width = 28;
+    brandLogo.height = 28;
+    brandContainer.appendChild(brandLogo);
+    const brandTitle = document.createElement("div");
+    brandTitle.className = "title";
+    brandTitle.setAttribute("data-i18n", "app.name");
+    brandTitle.textContent = t("app.name");
+    brandContainer.appendChild(brandTitle);
+
+    const helpButton = document.createElement("button");
+    helpButton.type = "button";
+    helpButton.className = "help-btn";
+    helpButton.title = t("help.tooltip", "About & Help");
+    helpButton.setAttribute("data-i18n-attr", "title:help.tooltip");
+    helpButton.setAttribute("aria-label", t("help.tooltip", "About & Help"));
+    helpButton.innerHTML =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<circle cx="12" cy="12" r="10"></circle>' +
+        '<path d="M9.5 9a2.5 2.5 0 1 1 4.5 1.5c-.6.5-1.5 1-1.5 2"></path>' +
+        '<line x1="12" y1="17" x2="12.01" y2="17"></line>' +
+        '</svg>';
+    helpButton.addEventListener("click", openHelpModal);
+    brandContainer.appendChild(helpButton);
+
+    sidebar.appendChild(brandContainer);
+
+    // Controls (language, theme, accent)
+    const controlsContainer = document.createElement("div");
+    controlsContainer.className = "sidebar-controls";
+
+    const languageRow = document.createElement("div");
+    languageRow.className = "control-row";
+    const languageLabel = document.createElement("div");
+    languageLabel.setAttribute("data-i18n", "control.language");
+    languageLabel.textContent = t("control.language");
+    languageRow.appendChild(languageLabel);
+
+    const languageSelect = document.createElement("select");
+    languageSelect.id = "lang_select";
+    languageSelect.innerHTML = '<option value="en">English</option><option value="zh-cn">简体中文</option><option value="ru">Русский</option>';
+    languageSelect.value = APP_STATE.lang;
+    languageSelect.onchange = function () { setLang(this.value); };
+    languageRow.appendChild(languageSelect);
+    controlsContainer.appendChild(languageRow);
+
+    const themeRow = document.createElement("div");
+    themeRow.className = "control-row";
+    const themeLabel = document.createElement("div");
+    themeLabel.setAttribute("data-i18n", "control.theme");
+    themeLabel.textContent = t("control.theme");
+    themeRow.appendChild(themeLabel);
+
+    const themeSelect = document.createElement("select");
+    themeSelect.id = "theme_select";
+    const autoOption = document.createElement("option");
+    autoOption.value = "auto";
+    autoOption.setAttribute("data-i18n", "theme.auto");
+    autoOption.textContent = t("theme.auto");
+    const lightOption = document.createElement("option");
+    lightOption.value = "light";
+    lightOption.setAttribute("data-i18n", "theme.light");
+    lightOption.textContent = t("theme.light");
+    const darkOption = document.createElement("option");
+    darkOption.value = "dark";
+    darkOption.setAttribute("data-i18n", "theme.dark");
+    darkOption.textContent = t("theme.dark");
+    themeSelect.appendChild(autoOption);
+    themeSelect.appendChild(lightOption);
+    themeSelect.appendChild(darkOption);
+    themeSelect.value = APP_STATE.theme;
+    themeSelect.onchange = function () { setTheme(this.value, { persistEnv: true, persistLocal: true }); };
+    themeRow.appendChild(themeSelect);
+    controlsContainer.appendChild(themeRow);
+
+    sidebar.appendChild(controlsContainer);
+
+    // Navigation
+    const navContainer = document.createElement("div");
+    navContainer.className = "nav";
+
+    // Settings (placed before Basic section)
+    const settingsLink = createNavLink("/settings.html", "nav.settings", "settings");
+    settingsLink.style.display = "none";
+    navContainer.appendChild(settingsLink);
+
+    // Basic section
+    const basicSection = document.createElement("div");
+    basicSection.className = "nav-section";
+    const basicTitle = document.createElement("div");
+    basicTitle.className = "nav-section-title";
+    basicTitle.setAttribute("data-i18n", "nav.basic");
+    basicTitle.textContent = t("nav.basic");
+    basicSection.appendChild(basicTitle);
+    basicSection.appendChild(createNavLink("/", "nav.firmware", "firmware"));
+    basicSection.appendChild(createNavLink("/uboot.html", "nav.uboot", "uboot"));
+    navContainer.appendChild(basicSection);
+
+    // Advanced section
+    const advancedSection = document.createElement("div");
+    advancedSection.className = "nav-section";
+    const advancedTitle = document.createElement("div");
+    advancedTitle.className = "nav-section-title";
+    advancedTitle.setAttribute("data-i18n", "nav.advanced");
+    advancedTitle.textContent = t("nav.advanced");
+    advancedSection.appendChild(advancedTitle);
+    advancedSection.appendChild(createNavLink("/bl2.html", "nav.bl2", "bl2"));
+    const gptLink = createNavLink("/gpt.html", "nav.gpt", "gpt");
+    gptLink.style.display = "none";
+    advancedSection.appendChild(gptLink);
+    const simgLink = createNavLink("/simg.html", "nav.simg", "simg");
+    simgLink.style.display = "none";
+    advancedSection.appendChild(simgLink);
+    const ubiLink = createNavLink("/ubi.html", "nav.ubi", "ubi");
+    ubiLink.style.display = "none";
+    advancedSection.appendChild(ubiLink);
+    advancedSection.appendChild(createNavLink("/factory.html", "nav.factory", "factory"));
+    advancedSection.appendChild(createNavLink("/initramfs.html", "nav.initramfs", "initramfs"));
+    navContainer.appendChild(advancedSection);
+
+    // System section
+    const systemSection = document.createElement("div");
+    systemSection.className = "nav-section";
+    const systemTitle = document.createElement("div");
+    systemTitle.className = "nav-section-title";
+    systemTitle.setAttribute("data-i18n", "nav.system");
+    systemTitle.textContent = t("nav.system");
+    systemSection.appendChild(systemTitle);
+    systemSection.appendChild(createNavLink("/backup.html", "nav.backup", "backup"));
+    systemSection.appendChild(createNavLink("/flash.html", "nav.flash", "flash"));
+    systemSection.appendChild(createNavLink("/env.html", "nav.env", "env"));
+    systemSection.appendChild(createNavLink("/console.html", "nav.console", "console"));
+    systemSection.appendChild(createNavLink("/reboot.html", "nav.reboot", "reboot"));
+    navContainer.appendChild(systemSection);
+
+    sidebar.appendChild(navContainer);
+
+    applyI18n(sidebar);
+    // Probe all Kconfig-controlled pages
+    for (const navId of Object.keys(NAV_VISIBILITY_DEFS)) {
+        updateNavVisibility(navId);
     }
-    var i = document.getElementById("sidebar"),
-        f, k, s, h, c, d, r, l, g, n, a, v, y, p, e, w, u, b, gptLink, simgLink;
-    i && i.getAttribute("data-rendered") !== "1" && (i.setAttribute("data-rendered", "1"), f = location && location.pathname ? location.pathname : "", f === "" && (f = "/"), i.innerHTML = "", k = document.createElement("div"), k.className = "sidebar-brand", s = document.createElement("div"), s.className = "title", s.setAttribute("data-i18n", "app.name"), s.textContent = t("app.name"), k.appendChild(s), i.appendChild(k), h = document.createElement("div"), h.className = "sidebar-controls", c = document.createElement("div"), c.className = "control-row", d = document.createElement("div"), d.setAttribute("data-i18n", "control.language"), d.textContent = t("control.language"), c.appendChild(d), r = document.createElement("select"), r.id = "lang_select", r.innerHTML = '<option value="en">English<\/option><option value="zh-cn">简体中文<\/option>', r.value = APP_STATE.lang, r.onchange = function () {
-        setLang(this.value)
-    }, c.appendChild(r), h.appendChild(c), l = document.createElement("div"), l.className = "control-row", g = document.createElement("div"), g.setAttribute("data-i18n", "control.theme"), g.textContent = t("control.theme"), l.appendChild(g), n = document.createElement("select"), n.id = "theme_select", a = document.createElement("option"), a.value = "auto", a.setAttribute("data-i18n", "theme.auto"), a.textContent = t("theme.auto"), v = document.createElement("option"), v.value = "light", v.setAttribute("data-i18n", "theme.light"), v.textContent = t("theme.light"), y = document.createElement("option"), y.value = "dark", y.setAttribute("data-i18n", "theme.dark"), y.textContent = t("theme.dark"), n.appendChild(a), n.appendChild(v), n.appendChild(y), n.value = APP_STATE.theme, n.onchange = function () {
-        setTheme(this.value, { persistEnv: true, persistLocal: true })
-    }, l.appendChild(n), h.appendChild(l), appendAccentControls(h), i.appendChild(h), p = document.createElement("div"), p.className = "nav", e = document.createElement("div"), e.className = "nav-section", w = document.createElement("div"), w.className = "nav-section-title", w.setAttribute("data-i18n", "nav.basic"), w.textContent = t("nav.basic"), e.appendChild(w), e.appendChild(o("/", "nav.firmware", "firmware")), e.appendChild(o("/uboot.html", "nav.uboot", "uboot")), p.appendChild(e), u = document.createElement("div"), u.className = "nav-section", b = document.createElement("div"), b.className = "nav-section-title", b.setAttribute("data-i18n", "nav.advanced"), b.textContent = t("nav.advanced"), u.appendChild(b), u.appendChild(o("/bl2.html", "nav.bl2", "bl2")), gptLink = o("/gpt.html", "nav.gpt", "gpt"), gptLink.style.display = "none", u.appendChild(gptLink), simgLink = o("/simg.html", "nav.simg", "simg"), simgLink.style.display = "none", u.appendChild(simgLink), u.appendChild(o("/factory.html", "nav.factory", "factory")), u.appendChild(o("/initramfs.html", "nav.initramfs", "initramfs")), p.appendChild(u), u = document.createElement("div"), u.className = "nav-section", b = document.createElement("div"), b.className = "nav-section-title", b.setAttribute("data-i18n", "nav.system"), b.textContent = t("nav.system"), u.appendChild(b), u.appendChild(o("/backup.html", "nav.backup", "backup")), u.appendChild(o("/flash.html", "nav.flash", "flash")), u.appendChild(o("/env.html", "nav.env", "env")), u.appendChild(o("/console.html", "nav.console", "console")), r = o("/reboot.html", "nav.reboot", "reboot"), u.appendChild(r), p.appendChild(u), i.appendChild(p), applyI18n(i), updateGptNavVisibility(), updateSimgNavVisibility())
+    attachSidebarScrollPersistence(navContainer);
 }
 
-function ajax(n) {
-    var t, i;
-    t = window.XMLHttpRequest ? new XMLHttpRequest : new ActiveXObject("Microsoft.XMLHTTP");
-    t.upload.addEventListener("progress", function (t) {
-        n.progress && n.progress(t)
+function ensureHelpModal() {
+    let backdrop = document.getElementById("help_modal_backdrop");
+    if (backdrop) return backdrop;
+
+    backdrop = document.createElement("div");
+    backdrop.id = "help_modal_backdrop";
+    backdrop.className = "help-modal-backdrop";
+
+    const modal = document.createElement("div");
+    modal.className = "help-modal";
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.setAttribute("aria-labelledby", "help_modal_title");
+
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.className = "help-modal-close";
+    closeButton.setAttribute("data-i18n-attr", "aria-label:common.close");
+    closeButton.setAttribute("aria-label", t("common.close", "Close"));
+    closeButton.innerHTML = "&times;";
+    closeButton.addEventListener("click", closeHelpModal);
+    modal.appendChild(closeButton);
+
+    const header = document.createElement("div");
+    header.className = "help-modal-header";
+
+    const logo = document.createElement("img");
+    logo.className = "help-modal-logo";
+    logo.src = getLogoSrc();
+    logo.alt = "";
+    header.appendChild(logo);
+
+    const titles = document.createElement("div");
+    const title = document.createElement("h2");
+    title.id = "help_modal_title";
+    title.className = "help-modal-title";
+    title.setAttribute("data-i18n", "help.title");
+    title.textContent = t("help.title", "About & Help");
+    titles.appendChild(title);
+
+    const subtitle = document.createElement("p");
+    subtitle.className = "help-modal-subtitle";
+    subtitle.setAttribute("data-i18n", "app.name");
+    subtitle.textContent = t("app.name");
+    titles.appendChild(subtitle);
+
+    header.appendChild(titles);
+    modal.appendChild(header);
+
+    const body = document.createElement("div");
+    body.className = "help-modal-body";
+
+    const intro = document.createElement("p");
+    intro.className = "help-modal-intro";
+    intro.setAttribute("data-i18n", "help.intro");
+    intro.textContent = t("help.intro");
+    body.appendChild(intro);
+
+    const info = document.createElement("dl");
+    info.className = "help-modal-info";
+
+    const authorDt = document.createElement("dt");
+    authorDt.setAttribute("data-i18n", "help.author");
+    authorDt.textContent = t("help.author", "Author");
+    info.appendChild(authorDt);
+
+    const authorDd = document.createElement("dd");
+    const authorLink = document.createElement("a");
+    authorLink.href = GITHUB_USER_URL;
+    authorLink.target = "_blank";
+    authorLink.rel = "noopener";
+    authorLink.textContent = AUTHOR_DISPLAY;
+    authorDd.appendChild(authorLink);
+    info.appendChild(authorDd);
+
+    const projectDt = document.createElement("dt");
+    projectDt.setAttribute("data-i18n", "help.project");
+    projectDt.textContent = t("help.project", "Project");
+    info.appendChild(projectDt);
+
+    const projectDd = document.createElement("dd");
+    const projectLink = document.createElement("a");
+    projectLink.href = PROJECT_REPO_URL;
+    projectLink.target = "_blank";
+    projectLink.rel = "noopener";
+    projectLink.textContent = "Yuzhii0718/bl-mt798x-dhcpd";
+    projectDd.appendChild(projectLink);
+    info.appendChild(projectDd);
+
+    body.appendChild(info);
+    modal.appendChild(body);
+
+    backdrop.appendChild(modal);
+
+    backdrop.addEventListener("click", (event) => {
+        if (event.target === backdrop) closeHelpModal();
     });
-    t.onreadystatechange = function () {
-        t.readyState == 4 && t.status == 200 && n.done && n.done(t.responseText)
-    };
-    n.timeout && (t.timeout = n.timeout);
-    i = "GET";
-    n.data && (i = "POST");
-    t.open(i, n.url);
-    t.send(n.data)
+
+    document.body.appendChild(backdrop);
+    return backdrop;
 }
 
-function consoleInit() {
-    var out = document.getElementById("console_out");
-    var cmd = document.getElementById("console_cmd");
-    var status = document.getElementById("console_status");
-    var token = document.getElementById("console_token");
-    var persistKey = "failsafe_console_output";
-    var persistMax = 200000;
+function handleHelpModalKey(event) {
+    if (event.key === "Escape") closeHelpModal();
+}
 
-    APP_STATE.console = APP_STATE.console || {
-        running: false,
-        pollTimer: null,
-        history: [],
-        histPos: -1,
-        tokenKey: "failsafe_console_token"
-    };
+function openHelpModal() {
+    const backdrop = ensureHelpModal();
+    applyI18n(backdrop);
+    backdrop.classList.add("is-open");
+    document.addEventListener("keydown", handleHelpModalKey);
+}
 
-    function loadToken() {
-        try {
-            var t = localStorage.getItem(APP_STATE.console.tokenKey);
-            token && t && (token.value = t);
-        } catch (e) { }
-    }
+function closeHelpModal() {
+    const backdrop = document.getElementById("help_modal_backdrop");
+    if (backdrop) backdrop.classList.remove("is-open");
+    document.removeEventListener("keydown", handleHelpModalKey);
+}
 
-    function saveToken() {
-        try {
-            token && localStorage.setItem(APP_STATE.console.tokenKey, token.value || "");
-        } catch (e) { }
-    }
+const SIDEBAR_SCROLL_KEY = "failsafe_sidebar_scroll";
 
-    function setStatus(t) {
-        status && (status.textContent = t || "");
-    }
+function readSidebarScroll() {
+    try {
+        const raw = sessionStorage.getItem(SIDEBAR_SCROLL_KEY);
+        const n = raw === null ? NaN : parseInt(raw, 10);
+        return Number.isFinite(n) && n >= 0 ? n : 0;
+    } catch { return 0; }
+}
 
-    function loadPersistedOutput() {
-        if (!out) return;
-        try {
-            var s = sessionStorage.getItem(persistKey);
-            if (s) out.textContent = s;
-        } catch (e) { }
-    }
+function writeSidebarScroll(value) {
+    const v = Math.max(0, value | 0);
+    try { sessionStorage.setItem(SIDEBAR_SCROLL_KEY, String(v)); }
+    catch { /* quota or disabled — ignore */ }
+}
 
-    function savePersistedOutput() {
-        if (!out) return;
-        try {
-            var s = out.textContent || "";
-            if (s.length > persistMax)
-                s = s.slice(s.length - persistMax);
-            sessionStorage.setItem(persistKey, s);
-        } catch (e) { }
-    }
+function attachSidebarScrollPersistence(navContainer) {
+    const targetTop = readSidebarScroll();
 
-    function appendText(t) {
-        if (!out) return;
-        if (!t) return;
-        out.textContent += t;
-        if (out.textContent.length > persistMax)
-            out.textContent = out.textContent.slice(out.textContent.length - persistMax);
-        savePersistedOutput();
-        out.scrollTop = out.scrollHeight;
-    }
-
-    async function pollOnce() {
-        if (!APP_STATE.console.running) return;
-        try {
-            var fd = new FormData();
-            if (token && token.value) fd.append("token", token.value);
-            var r = await fetch("/console/poll", { method: "POST", body: fd });
-            if (!r.ok) {
-                setStatus(t("console.status.http") + " " + r.status);
-                return;
-            }
-            var txt = await r.text();
-            var j;
-            try {
-                j = JSON.parse(txt);
-            } catch (e) {
-                setStatus(t("console.status.parse"));
-                return;
-            }
-            j && j.data && appendText(j.data);
-        } catch (e) {
-            setStatus(t("console.status.error") + " " + (e && e.message ? e.message : String(e)));
+    // The nav is the actual scroll container, but on a fresh page its layout
+    // may not be ready immediately. Setting scrollTop before scrollHeight is
+    // populated silently clamps to 0 — so retry across frames until either the
+    // container becomes scrollable, or we give up.
+    let attempts = 0;
+    const tryRestore = () => {
+        if (targetTop <= 0) return;
+        const maxTop = navContainer.scrollHeight - navContainer.clientHeight;
+        if (maxTop > 0) {
+            navContainer.scrollTop = Math.min(targetTop, maxTop);
+            return;
         }
-    }
-
-    function schedulePoll() {
-        APP_STATE.console.pollTimer && clearTimeout(APP_STATE.console.pollTimer);
-        APP_STATE.console.pollTimer = setTimeout(async function () {
-            await pollOnce();
-            schedulePoll();
-        }, 300);
-    }
-
-    window.consoleSend = async function () {
-        if (!cmd || !cmd.value) return;
-        saveToken();
-        var line = String(cmd.value);
-        cmd.value = "";
-        APP_STATE.console.history.unshift(line);
-        APP_STATE.console.history.length > 50 && (APP_STATE.console.history.length = 50);
-        APP_STATE.console.histPos = -1;
-
-        try {
-            var fd = new FormData();
-            fd.append("cmd", line);
-            if (token && token.value) fd.append("token", token.value);
-            setStatus(t("console.status.running"));
-            var r = await fetch("/console/exec", { method: "POST", body: fd });
-            var txt = await r.text();
-            if (!r.ok) {
-                setStatus(t("console.status.http") + " " + r.status + (txt ? ": " + txt : ""));
-                return;
-            }
-            try {
-                var j = JSON.parse(txt);
-                setStatus(t("console.status.ret") + " " + (j && typeof j.ret !== "undefined" ? j.ret : "?"));
-            } catch (e) {
-                setStatus(t("console.status.done"));
-            }
-        } catch (e) {
-            setStatus(t("console.status.error") + " " + (e && e.message ? e.message : String(e)));
-        }
+        if (attempts++ < 30) requestAnimationFrame(tryRestore);
     };
+    tryRestore();
 
-    window.consoleClear = async function () {
-        saveToken();
-        try {
-            var fd = new FormData();
-            if (token && token.value) fd.append("token", token.value);
-            var r = await fetch("/console/clear", { method: "POST", body: fd });
-            if (r.ok) {
-                out && (out.textContent = "");
-                try { sessionStorage.removeItem(persistKey); } catch (e) { }
-                setStatus(t("console.status.cleared"));
-            } else {
-                setStatus(t("console.status.http") + " " + r.status);
-            }
-        } catch (e) {
-            setStatus(t("console.status.error") + " " + (e && e.message ? e.message : String(e)));
-        }
-    };
-
-    if (cmd) {
-        cmd.addEventListener("keydown", function (e) {
-            if (e.key === "Enter") {
-                e.preventDefault();
-                window.consoleSend();
-                return;
-            }
-            if (e.key === "ArrowUp") {
-                var h = APP_STATE.console.history;
-                if (!h || !h.length) return;
-                APP_STATE.console.histPos = Math.min(h.length - 1, APP_STATE.console.histPos + 1);
-                cmd.value = h[APP_STATE.console.histPos] || "";
-                e.preventDefault();
-                return;
-            }
-            if (e.key === "ArrowDown") {
-                var h2 = APP_STATE.console.history;
-                if (!h2 || !h2.length) return;
-                APP_STATE.console.histPos = Math.max(-1, APP_STATE.console.histPos - 1);
-                cmd.value = APP_STATE.console.histPos >= 0 ? (h2[APP_STATE.console.histPos] || "") : "";
-                e.preventDefault();
-            }
+    // Save scroll position, throttled via rAF.
+    let rafId = 0;
+    navContainer.addEventListener("scroll", () => {
+        if (rafId) return;
+        rafId = requestAnimationFrame(() => {
+            rafId = 0;
+            writeSidebarScroll(navContainer.scrollTop);
         });
-    }
+    }, { passive: true });
 
-    APP_STATE.console.running = true;
-    loadToken();
-    loadPersistedOutput();
-    setStatus(t("console.status.ready"));
-    schedulePoll();
+    // Flush the current scroll position synchronously whenever the user is
+    // about to leave the page — the throttled scroll write may not have fired
+    // yet by the time navigation starts.
+    const flush = () => writeSidebarScroll(navContainer.scrollTop);
+
+    // Capture-phase click on links inside the sidebar: runs before the browser
+    // begins navigation, while sessionStorage writes are still guaranteed.
+    navContainer.addEventListener("click", (event) => {
+        if (event.target.closest?.("a")) flush();
+    }, true);
+
+    window.addEventListener("pagehide", flush);
+    // Some embedded browsers fire only beforeunload; cover both.
+    window.addEventListener("beforeunload", flush);
 }
 
-function envInit() {
-    var list = document.getElementById("env_list");
-    var name = document.getElementById("env_name");
-    var value = document.getElementById("env_value");
-    var status = document.getElementById("env_status");
-    var count = document.getElementById("env_count");
-    var file = document.getElementById("env_file");
-
-    function setStatus(t) {
-        status && (status.textContent = t || "");
-    }
-
-    function countLines(txt) {
-        if (!txt) return 0;
-        var lines = txt.split("\n");
-        var c = 0;
-        for (var i = 0; i < lines.length; i++) {
-            if (lines[i] && lines[i].indexOf("=") > 0)
-                c++;
+function ajax(request) {
+    const xhr = new XMLHttpRequest();
+    xhr.upload.addEventListener("progress", (event) => request.progress?.(event));
+    xhr.addEventListener("readystatechange", () => {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+            request.done?.(xhr.responseText);
         }
-        return c;
-    }
-
-    window.envRefresh = async function () {
-        try {
-            setStatus(t("env.status.loading"));
-            var r = await fetch("/env/list", { method: "GET" });
-            if (!r.ok) {
-                setStatus(t("env.status.http") + " " + r.status);
-                return;
-            }
-            var txt = await r.text();
-            list && (list.textContent = txt || "");
-            count && (count.textContent = t("env.count") + " " + countLines(txt));
-            setStatus(t("env.status.ready"));
-        } catch (e) {
-            setStatus(t("env.status.error") + " " + (e && e.message ? e.message : String(e)));
-        }
-    };
-
-    window.envSet = async function () {
-        if (!name || !name.value) {
-            alert(t("env.error.no_name"));
-            return;
-        }
-        try {
-            var fd = new FormData();
-            fd.append("name", name.value);
-            fd.append("value", value ? value.value : "");
-            setStatus(t("env.status.saving"));
-            var r = await fetch("/env/set", { method: "POST", body: fd });
-            var txt = await r.text();
-            if (!r.ok) {
-                setStatus(t("env.status.error") + " " + (txt || r.status));
-                return;
-            }
-            setStatus(t("env.status.saved"));
-            window.envRefresh();
-        } catch (e) {
-            setStatus(t("env.status.error") + " " + (e && e.message ? e.message : String(e)));
-        }
-    };
-
-    window.envUnset = async function () {
-        if (!name || !name.value) {
-            alert(t("env.error.no_name"));
-            return;
-        }
-        if (!confirm(t("env.confirm.delete") + " " + name.value + " ?"))
-            return;
-        try {
-            var fd = new FormData();
-            fd.append("name", name.value);
-            setStatus(t("env.status.saving"));
-            var r = await fetch("/env/unset", { method: "POST", body: fd });
-            var txt = await r.text();
-            if (!r.ok) {
-                setStatus(t("env.status.error") + " " + (txt || r.status));
-                return;
-            }
-            setStatus(t("env.status.deleted"));
-            window.envRefresh();
-        } catch (e) {
-            setStatus(t("env.status.error") + " " + (e && e.message ? e.message : String(e)));
-        }
-    };
-
-    window.envReset = async function () {
-        if (!confirm(t("env.confirm.reset")))
-            return;
-        try {
-            setStatus(t("env.status.saving"));
-            var r = await fetch("/env/reset", { method: "POST" });
-            var txt = await r.text();
-            if (!r.ok) {
-                setStatus(t("env.status.error") + " " + (txt || r.status));
-                return;
-            }
-            setStatus(t("env.status.reset"));
-            window.envRefresh();
-        } catch (e) {
-            setStatus(t("env.status.error") + " " + (e && e.message ? e.message : String(e)));
-        }
-    };
-
-    window.envRestore = async function () {
-        if (!file || !file.files || !file.files.length) {
-            alert(t("env.error.no_file"));
-            return;
-        }
-        if (!confirm(t("env.confirm.restore")))
-            return;
-        try {
-            var fd = new FormData();
-            fd.append("envfile", file.files[0]);
-            setStatus(t("env.status.saving"));
-            var r = await fetch("/env/restore", { method: "POST", body: fd });
-            var txt = await r.text();
-            if (!r.ok) {
-                setStatus(t("env.status.error") + " " + (txt || r.status));
-                return;
-            }
-            setStatus(t("env.status.restored"));
-            window.envRefresh();
-        } catch (e) {
-            setStatus(t("env.status.error") + " " + (e && e.message ? e.message : String(e)));
-        }
-    };
-
-    window.envRefresh();
+    });
+    if (request.timeout) xhr.timeout = request.timeout;
+    const method = request.data ? "POST" : "GET";
+    xhr.open(method, request.url);
+    xhr.send(request.data);
 }
 
-function appInit(n) {
-    APP_STATE.page = n || "";
+/* consoleInit moved to console_js.js */
+
+/* envInit moved to env_js.js */
+
+function appInit(pageName) {
+    APP_STATE.page = pageName || "";
     APP_STATE.i18nEnabled = isI18nAvailable();
     APP_STATE.lang = detectLang();
     APP_STATE.theme = detectTheme();
@@ -750,6 +976,7 @@ function appInit(n) {
     updateDocumentTitle();
     loadThemeColor();
     loadThemeMode();
+    loadDarkVariant();
     setTimeout(function () {
         document.body.classList.add("ready")
     }, 0);
@@ -758,144 +985,258 @@ function appInit(n) {
     getSysInfo();
     getStorageInfoForSysinfo();
     // getCurrentMtdLayout();
-    (n === "index" || n === "initramfs") && getmtdlayoutlist();
-    n === "backup" && backupInit();
-    n === "flash" && flashInit();
-    n === "console" && consoleInit();
-    n === "env" && envInit()
+    (pageName === "index" || pageName === "initramfs") && getmtdlayoutlist();
+    pageName === "backup" && typeof backupInit === "function" && backupInit();
+    pageName === "flash" && typeof flashInit === "function" && flashInit();
+    pageName === "console" && typeof consoleInit === "function" && consoleInit();
+    pageName === "env" && typeof envInit === "function" && envInit()
+    pageName === "settings" && typeof settingsInit === "function" && settingsInit();
+    pageName === "ubi" && typeof ubiInit === "function" && ubiInit();
 
-    const Yuzhii_VERSION = 'UBOOT-MTK-20250711';
-    const Yuzhii_LINK = 'https://github.com/Yuzhii0718/';
-    console.log('\n%c Yuzhii0718 ' + Yuzhii_VERSION + ' %c ' + Yuzhii_LINK + ' ', 'color: #fadfa3; background: #030307; padding:5px 0;', 'background: #fadfa3; padding:5px 0;');
+    console.log('\n%c Yuzhii0718 ' + UBOOT_VERSION + ' %c ' + GITHUB_USER_URL + ' ', 'color: #fadfa3; background: #030307; padding:5px 0;', 'background: #fadfa3; padding:5px 0;');
 }
 
-function updateGptNavVisibility() {
-    // Hide GPT update entry when no MMC is present (runtime detection).
-    // If backupinfo is unavailable, keep it visible (fallback behavior).
-    var el = document.querySelector("#sidebar [data-nav-id='gpt']");
-    if (!el) return;
-    var bi = APP_STATE.backupinfo;
-    if (!bi || !bi.mmc || typeof bi.mmc.present === "undefined") {
-        el.style.display = "none";
+/**
+ * Unified nav visibility configuration.
+ * Each entry defines how to determine if a nav link should be shown.
+ * Pages controlled by Kconfig options are probed at runtime.
+ * 
+ * Mode: "probe" - fetch the page URL to check if it exists (default)
+ *       "condition" - evaluate a condition function
+ */
+const NAV_VISIBILITY_DEFS = {
+    // Advanced features (depends on WEBUI_FAILSAFE_ADVANCED)
+    backup: {
+        url: "/backup.html",
+        logPrefix: "Backup",
+        hiddenReason: "feature not enabled in build config",
+    },
+    console: {
+        url: "/console.html",
+        logPrefix: "Console",
+        hiddenReason: "feature not enabled in build config",
+    },
+    env: {
+        url: "/env.html",
+        logPrefix: "Environment",
+        hiddenReason: "feature not enabled in build config",
+    },
+    factory: {
+        url: "/factory.html",
+        logPrefix: "Factory",
+        hiddenReason: "feature not enabled in build config",
+    },
+    flash: {
+        url: "/flash.html",
+        logPrefix: "Flash",
+        hiddenReason: "feature not enabled in build config",
+    },
+    gpt: {
+        url: "/gpt.html",
+        logPrefix: "GPT upgrade",
+        hiddenReason: "feature disabled or not an MMC device",
+    },
+    settings: {
+        url: "/settings.html",
+        logPrefix: "Settings",
+        hiddenReason: "feature not enabled in build config",
+        onHidden: ensureSidebarAccentFallback,
+    },
+    simg: {
+        url: "/simg.html",
+        logPrefix: "SIMG",
+        hiddenReason: "feature not enabled in build config",
+    },
+    ubi: {
+        url: "/ubi.html",
+        logPrefix: "UBI",
+        hiddenReason: "feature not enabled or no NAND flash",
+    },
+};
+
+/**
+ * Unified nav visibility update function.
+ * Supports two modes:
+ *   - "probe": fetch URL to check if page exists
+ *   - "condition": evaluate a condition function
+ * @param {string} navId - The data-nav-id value
+ */
+function updateNavVisibility(navId) {
+    const def = NAV_VISIBILITY_DEFS[navId];
+    if (!def) return;
+
+    const navLink = document.querySelector(`#sidebar [data-nav-id='${navId}']`);
+    if (!navLink) return;
+
+    if (def.mode === "condition") {
+        // Condition-based visibility
+        const show = def.condition();
+        navLink.style.display = show ? "" : "none";
+        console.warn(`${def.logPrefix} nav visibility: ${show ? "shown" : "hidden"}`);
         return;
     }
-    el.style.display = bi.mmc.present === false ? "none" : "";
-    console.warn("GPT nav visibility updated based on MMC presence:", bi.mmc.present);
+
+    // Probe-based visibility (default)
+    const probeKey = `_${navId}_probe_done`;
+    const resultKey = `_${navId}_probe_result`;
+    const sessionKey = `nav_probe_${navId}`;
+
+    // Check sessionStorage first (persists across page navigations)
+    try {
+        const cached = sessionStorage.getItem(sessionKey);
+        if (cached !== null) {
+            const exists = cached === "1";
+            APP_STATE[probeKey] = true;
+            APP_STATE[resultKey] = exists;
+            navLink.style.display = exists ? "" : "none";
+            if (!exists && def.onHidden) def.onHidden();
+            return;
+        }
+    } catch { /* sessionStorage unavailable */ }
+
+    // If probe already done in this page session, use in-memory cached result
+    if (APP_STATE[probeKey]) {
+        navLink.style.display = APP_STATE[resultKey] ? "" : "none";
+        return;
+    }
+
+    // No cached result: hide and start probe
+    navLink.style.display = "none";
+    APP_STATE[probeKey] = true;
+
+    const url = def.url || `/${navId}.html`;
+    fetch(`${url}?_probe=1`, { method: "GET", cache: "no-store" })
+        .then((response) => {
+            const exists = response?.ok === true;
+            APP_STATE[resultKey] = exists;
+            navLink.style.display = exists ? "" : "none";
+            try { sessionStorage.setItem(sessionKey, exists ? "1" : "0"); } catch {}
+            if (!exists) {
+                const reason = def.hiddenReason ? ` (${def.hiddenReason})` : "";
+                console.warn(`${def.logPrefix} not available${reason}`);
+                if (def.onHidden) def.onHidden();
+            }
+        })
+        .catch(() => {
+            APP_STATE[resultKey] = false;
+            try { sessionStorage.setItem(sessionKey, "0"); } catch {}
+            const reason = def.hiddenReason ? ` (${def.hiddenReason})` : "";
+            console.warn(`${def.logPrefix} not available${reason}`);
+            if (def.onHidden) def.onHidden();
+        });
+}
+
+// Legacy wrapper functions for backward compatibility
+function updateGptNavVisibility() {
+    updateNavVisibility("gpt");
 }
 
 function updateSimgNavVisibility() {
-    // Hide Single Image entry unless the page is actually served.
-    var el = document.querySelector("#sidebar [data-nav-id='simg']");
-    if (!el) return;
-    el.style.display = "none";
+    updateNavVisibility("simg");
+}
 
-    // Avoid repeated probes.
-    if (APP_STATE._simg_probe_done) return;
-    APP_STATE._simg_probe_done = true;
+function updateSettingsNavVisibility() {
+    updateNavVisibility("settings");
+}
 
-    try {
-        fetch("/simg.html?_probe=1", { method: "GET", cache: "no-store" })
-            .then(function (r) {
-                if (r && r.ok) {
-                    el.style.display = "";
-                    return;
-                }
-                console.warn("SIMG probe HTTP status:", r ? r.status : "unknown");
-                console.info("If SIMG feature is not enabled, this warning is expected.");
-            })
-            .catch(function () { });
-    } catch (e) {
-        console.warn("Unexpected error during SIMG probe:", e);
-    }
+function ensureSidebarAccentFallback() {
+    const controlsContainer = document.querySelector("#sidebar .sidebar-controls");
+    if (!controlsContainer || controlsContainer.querySelector(".control-row-color")) return;
+    appendAccentControls(controlsContainer);
+    applyI18n(controlsContainer);
 }
 
 function renderSysInfo() {
-    var n = document.getElementById("sysinfo"), i, u, f;
-    if (!n) return;
-    i = APP_STATE.sysinfo;
-    if (!i) {
-        n.textContent = t("sysinfo.loading");
+    const sysinfoContainer = document.getElementById("sysinfo");
+    let sysinfoData;
+    let boardInfo;
+    let ramInfo;
+    let mtdSummary;
+    if (!sysinfoContainer) return;
+    sysinfoData = APP_STATE.sysinfo;
+    if (!sysinfoData) {
+        sysinfoContainer.textContent = t("sysinfo.loading");
         return
     }
-    u = i.board || {};
-    f = i.ram || {};
+    boardInfo = sysinfoData.board || {};
+    ramInfo = sysinfoData.ram || {};
 
-    while (n.firstChild) n.removeChild(n.firstChild);
-    n.classList.remove("sysinfo-expanded");
+    while (sysinfoContainer.firstChild) sysinfoContainer.removeChild(sysinfoContainer.firstChild);
+    sysinfoContainer.classList.remove("sysinfo-expanded");
 
-    var summary = document.createElement("div");
+    const summary = document.createElement("div");
     summary.className = "sysinfo-summary";
 
-    var boardLine = document.createElement("div");
+    const boardLine = document.createElement("div");
     boardLine.className = "sysinfo-line";
-    boardLine.textContent = t("sysinfo.board") + " " + (u.model || t("sysinfo.unknown"));
+    boardLine.textContent = t("sysinfo.board") + " " + (boardInfo.model || t("sysinfo.unknown"));
     summary.appendChild(boardLine);
 
-    var ramLine = document.createElement("div");
+    const ramLine = document.createElement("div");
     ramLine.className = "sysinfo-line";
-    ramLine.textContent = t("sysinfo.ram") + " " + (f.size !== undefined && f.size !== null && f.size !== 0 ? bytesToHuman(f.size) : t("sysinfo.unknown"));
+    ramLine.textContent = t("sysinfo.ram") + " " + (ramInfo.size !== undefined && ramInfo.size !== null && ramInfo.size !== 0 ? bytesToHuman(ramInfo.size) : t("sysinfo.unknown"));
     summary.appendChild(ramLine);
 
-    if (i.storage && i.storage.mtd_layout) {
-        var mtdSummary = i.storage.mtd_layout || {};
+    if (sysinfoData.storage && sysinfoData.storage.mtd_layout) {
+        mtdSummary = sysinfoData.storage.mtd_layout || {};
         if (mtdSummary.current) {
-            var curLayoutLine = document.createElement("div");
+            const curLayoutLine = document.createElement("div");
             curLayoutLine.className = "sysinfo-line";
             curLayoutLine.textContent = t("sysinfo.mtd.current", "MTD layout") + " " + mtdSummary.current;
             summary.appendChild(curLayoutLine);
         }
     }
 
-    n.appendChild(summary);
+    sysinfoContainer.appendChild(summary);
 
-    var details = document.createElement("details");
+    const details = document.createElement("details");
     details.className = "sysinfo-details";
 
-    var summaryNode = document.createElement("summary");
+    const summaryNode = document.createElement("summary");
     summaryNode.textContent = t("sysinfo.more", "More info");
     details.appendChild(summaryNode);
 
-    var extra = document.createElement("div");
+    const extra = document.createElement("div");
     extra.className = "sysinfo-extra";
 
-    if (i.storage && i.storage.mtd_layout) {
+    if (sysinfoData.storage && sysinfoData.storage.mtd_layout) {
         if (mtdSummary.current_parts) {
-            var curPartsLine = document.createElement("div");
+            const curPartsLine = document.createElement("div");
             curPartsLine.className = "sysinfo-line sysinfo-mtdparts";
             curPartsLine.textContent = t("sysinfo.mtd.parts", "MTD parts") + " " + mtdSummary.current_parts;
             extra.appendChild(curPartsLine);
         }
     }
 
-    if (i.build_variant) {
-        var variantLine = document.createElement("div");
+    if (sysinfoData.build_variant) {
+        const variantLine = document.createElement("div");
         variantLine.className = "sysinfo-line";
-        variantLine.textContent = t("sysinfo.variant", "Variant") + " " + i.build_variant;
+        variantLine.textContent = t("sysinfo.variant", "Variant") + " " + sysinfoData.build_variant;
         extra.appendChild(variantLine);
     }
 
-    if (u.compatible) {
-        var compatLine = document.createElement("div");
+    if (boardInfo.compatible) {
+        const compatLine = document.createElement("div");
         compatLine.className = "sysinfo-line";
-        compatLine.textContent = t("sysinfo.compat", "Compatible") + " " + u.compatible;
+        compatLine.textContent = t("sysinfo.compat", "Compatible") + " " + boardInfo.compatible;
         extra.appendChild(compatLine);
     }
 
-    if (i.storage && i.storage.mtd_layout) {
-        var mtd = i.storage.mtd_layout || {};
-        var layouts = mtd.layouts || [];
+    if (sysinfoData.storage && sysinfoData.storage.mtd_layout) {
+        const mtdLayoutInfo = sysinfoData.storage.mtd_layout || {};
+        const layouts = mtdLayoutInfo.layouts || [];
         if (layouts && layouts.length) {
-            var layoutTitle = document.createElement("div");
+            const layoutTitle = document.createElement("div");
             layoutTitle.className = "sysinfo-line sysinfo-section";
             layoutTitle.textContent = t("sysinfo.mtd.layouts", "MTD layouts");
             extra.appendChild(layoutTitle);
 
-            var layoutList = document.createElement("ul");
+            const layoutList = document.createElement("ul");
             layoutList.className = "sysinfo-list";
-            for (var li = 0; li < layouts.length; li++) {
-                var item = layouts[li] || {};
-                var entry = document.createElement("li");
-                var parts = item.parts ? " " + item.parts : "";
+            for (let layoutIndex = 0; layoutIndex < layouts.length; layoutIndex++) {
+                const item = layouts[layoutIndex] || {};
+                const entry = document.createElement("li");
+                const parts = item.parts ? " " + item.parts : "";
                 entry.textContent = (item.label || "-") + ":" + parts;
                 layoutList.appendChild(entry);
             }
@@ -903,26 +1244,26 @@ function renderSysInfo() {
         }
     }
 
-    if (i.storage && i.storage.mmc && i.storage.mmc.present) {
-        var mmc = i.storage.mmc;
-        var mmcTitle = document.createElement("div");
+    if (sysinfoData.storage && sysinfoData.storage.mmc && sysinfoData.storage.mmc.present) {
+        const mmcInfo = sysinfoData.storage.mmc;
+        const mmcTitle = document.createElement("div");
         mmcTitle.className = "sysinfo-line sysinfo-section";
         mmcTitle.textContent = t("sysinfo.mmc", "MMC partitions");
         extra.appendChild(mmcTitle);
 
-        if (mmc.parts && mmc.parts.length) {
-            var list = document.createElement("ul");
+        if (mmcInfo.parts && mmcInfo.parts.length) {
+            const list = document.createElement("ul");
             list.className = "sysinfo-list";
-            for (var iPart = 0; iPart < mmc.parts.length; iPart++) {
-                var p = mmc.parts[iPart];
-                var li = document.createElement("li");
-                var sizeTxt = p.size ? bytesToHuman(p.size) : t("sysinfo.unknown");
-                li.textContent = (p.name || "-") + " (" + sizeTxt + ")";
-                list.appendChild(li);
+            for (let partitionIndex = 0; partitionIndex < mmcInfo.parts.length; partitionIndex++) {
+                const partition = mmcInfo.parts[partitionIndex];
+                const listItem = document.createElement("li");
+                const sizeText = partition.size ? bytesToHuman(partition.size) : t("sysinfo.unknown");
+                listItem.textContent = (partition.name || "-") + " (" + sizeText + ")";
+                list.appendChild(listItem);
             }
             extra.appendChild(list);
         } else {
-            var empty = document.createElement("div");
+            const empty = document.createElement("div");
             empty.className = "sysinfo-line";
             empty.textContent = t("sysinfo.mmc.none", "No partitions");
             extra.appendChild(empty);
@@ -931,10 +1272,10 @@ function renderSysInfo() {
 
     if (extra.childNodes.length) {
         details.appendChild(extra);
-        n.appendChild(details);
+        sysinfoContainer.appendChild(details);
 
-        var toggleExpanded = function () {
-            details.open ? n.classList.add("sysinfo-expanded") : n.classList.remove("sysinfo-expanded");
+        const toggleExpanded = () => {
+            details.open ? sysinfoContainer.classList.add("sysinfo-expanded") : sysinfoContainer.classList.remove("sysinfo-expanded");
         };
         details.addEventListener("toggle", toggleExpanded);
         toggleExpanded();
@@ -944,37 +1285,34 @@ function renderSysInfo() {
 function getSysInfo() {
     // Always fetch sysinfo into APP_STATE (used by features like backup filename),
     // but only render when the sysinfo element exists on current page.
-    var n = document.getElementById("sysinfo");
-    n && renderSysInfo();
+    const sysinfoElement = document.getElementById("sysinfo");
+    if (sysinfoElement) renderSysInfo();
     ajax({
         url: "/sysinfo",
-        done: function (txt) {
+        done: (responseText) => {
             try {
-                APP_STATE.sysinfo = JSON.parse(txt)
-            } catch (t) {
-                return
+                APP_STATE.sysinfo = JSON.parse(responseText);
+            } catch {
+                return;
             }
-            n && renderSysInfo()
-        }
-    })
+            if (sysinfoElement) renderSysInfo();
+        },
+    });
 }
 
 async function ensureSysInfoLoaded() {
     // On pages without #sysinfo (e.g. backup.html), we still need board model.
-    if (APP_STATE.sysinfo && APP_STATE.sysinfo.board && APP_STATE.sysinfo.board.model)
-        return APP_STATE.sysinfo;
+    if (APP_STATE.sysinfo?.board?.model) return APP_STATE.sysinfo;
+    if (APP_STATE._sysinfo_promise) return APP_STATE._sysinfo_promise;
 
-    if (APP_STATE._sysinfo_promise)
-        return await APP_STATE._sysinfo_promise;
-
-    APP_STATE._sysinfo_promise = (async function () {
+    APP_STATE._sysinfo_promise = (async () => {
         try {
-            var r = await fetch("/sysinfo", { method: "GET" });
-            if (!r || !r.ok) return null;
-            var j = await r.json();
-            j && (APP_STATE.sysinfo = j);
-            return j;
-        } catch (e) {
+            const response = await fetch("/sysinfo", { method: "GET" });
+            if (!response?.ok) return null;
+            const payload = await response.json();
+            if (payload) APP_STATE.sysinfo = payload;
+            return payload;
+        } catch {
             return null;
         } finally {
             // allow retry later
@@ -982,24 +1320,24 @@ async function ensureSysInfoLoaded() {
         }
     })();
 
-    return await APP_STATE._sysinfo_promise;
+    return APP_STATE._sysinfo_promise;
 }
 
 function getStorageInfoForSysinfo() {
     // Pull /backup/info to render current partition table in the sysinfo box
     if (APP_STATE.backupinfo) {
-        updateGptNavVisibility();
         return;
     }
     ajax({
         url: "/backup/info",
-        done: function (txt) {
+        done: (responseText) => {
             try {
-                APP_STATE.backupinfo = JSON.parse(txt);
-            } catch (e) { return; }
-            updateGptNavVisibility();
+                APP_STATE.backupinfo = JSON.parse(responseText);
+            } catch {
+                return;
+            }
             renderSysInfo();
-        }
+        },
     });
 }
 
@@ -1007,14 +1345,14 @@ function getCurrentMtdLayout() {
     // Get current mtd layout label if multi-layout is enabled
     ajax({
         url: "/getmtdlayout",
-        done: function (resp) {
+        done: (resp) => {
             if (!resp || resp === "error") return;
-            var parts = resp.split(";");
-            if (parts.length > 0 && parts[0]) {
-                APP_STATE.mtd_layout_current = parts[0];
+            const [first] = resp.split(";");
+            if (first) {
+                APP_STATE.mtd_layout_current = first;
                 renderSysInfo();
             }
-        }
+        },
     });
 }
 
@@ -1025,910 +1363,229 @@ function startup() {
 function getmtdlayoutlist() {
     ajax({
         url: "/getmtdlayout",
-        done: function (n) {
-            var i, f, e, u, r, o;
-            if (n != "error" && (i = n.split(";"), f = document.getElementById("current_mtd_layout"), f && (f.innerHTML = t("label.current_mtd") + i[0]), e = document.getElementById("choose_mtd_layout"), e && (e.textContent = t("label.choose_mtd")), u = document.getElementById("mtd_layout_label"), u)) {
-                for (u.options.length = 0, r = 1; r < i.length; r++) i[r].length > 0 && u.options.add(new Option(i[r], i[r]));
-                o = document.getElementById("mtd_layout");
-                o && (o.style.display = "")
+        done: (responseText) => {
+            if (responseText === "error") return;
+            const layoutNames = responseText.split(";");
+
+            const currentLayoutEl = document.getElementById("current_mtd_layout");
+            if (currentLayoutEl) {
+                const cur = layoutNames[0];
+                currentLayoutEl.innerHTML = cur ? t("label.current_mtd") + cur : "";
             }
-        }
-    })
+
+            const chooseLayoutEl = document.getElementById("choose_mtd_layout");
+            if (chooseLayoutEl) chooseLayoutEl.textContent = t("label.choose_mtd");
+
+            const layoutSelect = document.getElementById("mtd_layout_label");
+            if (!layoutSelect) return;
+
+            layoutSelect.options.length = 0;
+            let hasOptions = false;
+            for (let i = 1; i < layoutNames.length; i++) {
+                const name = layoutNames[i];
+                if (name?.length > 0) {
+                    layoutSelect.options.add(new Option(name, name));
+                    hasOptions = true;
+                }
+            }
+
+            const layoutContainer = document.getElementById("mtd_layout");
+            if (layoutContainer) layoutContainer.style.display = hasOptions ? "" : "none";
+        },
+    });
 }
 
 function getversion() {
     ajax({
         url: "/version",
-        done: function (n) {
-            var t = document.getElementById("version");
-            t && (t.innerHTML = n);
-            ensureBranding()
-        }
-    })
-}
-
-function upload(n) {
-    var o = document.getElementById("file").files[0],
-        u, f, e, r, i, s, a;
-    o && (a = o.name || "", u = document.getElementById("form"), u && (u.style.display = "none"), f = document.getElementById("hint"), f && (f.style.display = "none"), e = document.getElementById("bar"), e && (e.style.display = "block"), r = new FormData, r.append(n, o), i = document.getElementById("mtd_layout_label"), i && i.options.length > 0 && (s = i.selectedIndex, r.append("mtd_layout", i.options[s].value)), ajax({
-        url: "/upload",
-        data: r,
-        done: function (n) {
-            var i, r, u, f, e, l, md5InName, md5Hint, md5Ok, md5Match, md5Class;
-            n == "fail" ? location = "/fail.html" : (i = n.split(" "), l = document.getElementById("filename"), l && a && (l.style.display = "block", l.innerHTML = "<span class=\"filename-label\">" + t("label.file") + "</span><span class=\"filename-value\">" + a + "</span>"), r = document.getElementById("size"), r && (r.style.display = "block", r.innerHTML = t("label.size") + i[0]), u = document.getElementById("md5"), md5Match = a ? /(?:^|[._-])md5-([0-9a-fA-F]{32})(?:$|[._-])/.exec(a) : null, md5InName = md5Match && md5Match[1] ? md5Match[1] : "", u && (u.style.display = "block", md5Ok = i[1] && md5InName && String(i[1]).toLowerCase() === String(md5InName).toLowerCase(), md5Hint = md5InName ? (md5Ok ? t("md5.match") : t("md5.mismatch")) : "", md5Class = md5InName ? (md5Ok ? "md5-ok" : "md5-bad") : "", u.innerHTML = t("label.md5") + i[1] + (md5Hint ? " <span class=\"md5-status " + md5Class + "\">" + md5Hint + "</span>" : "")), f = document.getElementById("mtd"), f && i[2] && (f.style.display = "block", f.innerHTML = t("label.mtd") + i[2]), e = document.getElementById("upgrade"), e && (e.style.display = "block"))
+        done: (versionText) => {
+            const versionElement = document.getElementById("version");
+            if (versionElement) versionElement.innerHTML = versionText;
+            ensureBranding();
         },
-        progress: function (n) {
-            if (n.total) {
-                var i = parseInt(n.loaded / n.total * 100),
-                    t = document.getElementById("bar");
-                t && (t.style.display = "block", t.style.setProperty("--percent", i))
+    });
+}
+
+function upload(formFieldName) {
+    const selectedFile = document.getElementById("file").files[0];
+    if (!selectedFile) return;
+
+    const selectedFileName = selectedFile.name || "";
+
+    const formElement = document.getElementById("form");
+    if (formElement) formElement.style.display = "none";
+
+    const hintElement = document.getElementById("hint");
+    if (hintElement) hintElement.style.display = "none";
+
+    const progressBarElement = document.getElementById("bar");
+    if (progressBarElement) progressBarElement.style.display = "block";
+
+    const formData = new FormData();
+    formData.append(formFieldName, selectedFile);
+
+    const layoutSelect = document.getElementById("mtd_layout_label");
+    if (layoutSelect?.options.length > 0) {
+        formData.append("mtd_layout", layoutSelect.options[layoutSelect.selectedIndex].value);
+    }
+
+    ajax({
+        url: "/upload",
+        data: formData,
+        done: (responseText) => {
+            if (responseText === "fail") {
+                location = "/fail.html";
+                return;
             }
-        }
-    }))
+            const [sizeText, md5Text, mtdText] = responseText.split(" ");
+
+            const filenameElement = document.getElementById("filename");
+            if (filenameElement && selectedFileName) {
+                filenameElement.style.display = "block";
+                filenameElement.innerHTML =
+                    `<span class="filename-label">${t("label.file")}</span>` +
+                    `<span class="filename-value">${selectedFileName}</span>`;
+            }
+
+            const sizeElement = document.getElementById("size");
+            if (sizeElement) {
+                sizeElement.style.display = "block";
+                sizeElement.innerHTML = `${t("label.size")}${sizeText}`;
+            }
+
+            const md5Element = document.getElementById("md5");
+            if (md5Element) {
+                const md5Match = selectedFileName
+                    ? /(?:^|[._-])md5-([0-9a-fA-F]{32})(?:$|[._-])/.exec(selectedFileName)
+                    : null;
+                const md5InName = md5Match?.[1] ?? "";
+                const md5Ok = !!(md5Text && md5InName &&
+                    md5Text.toLowerCase() === md5InName.toLowerCase());
+                const md5Hint  = md5InName ? (md5Ok ? t("md5.match") : t("md5.mismatch")) : "";
+                const md5Class = md5InName ? (md5Ok ? "md5-ok" : "md5-bad") : "";
+                md5Element.style.display = "block";
+                md5Element.innerHTML = `${t("label.md5")}${md5Text}` + (
+                    md5Hint ? ` <span class="md5-status ${md5Class}">${md5Hint}</span>` : ""
+                );
+            }
+
+            const mtdElement = document.getElementById("mtd");
+            if (mtdElement && mtdText) {
+                mtdElement.style.display = "block";
+                mtdElement.innerHTML = `${t("label.mtd")}${mtdText}`;
+            }
+
+            const upgradeElement = document.getElementById("upgrade");
+            if (upgradeElement) upgradeElement.style.display = "block";
+
+        },
+        progress: (progressEvent) => {
+            if (!progressEvent.total) return;
+            const percent = Math.floor(progressEvent.loaded / progressEvent.total * 100);
+            const progressElement = document.getElementById("bar");
+            if (progressElement) {
+                progressElement.style.display = "block";
+                progressElement.style.setProperty("--percent", percent);
+            }
+            const uploadHero = document.getElementById("upload_hero");
+            if (uploadHero) uploadHero.style.display = "";
+            const barText = document.getElementById("bar_text");
+            if (barText) {
+                barText.style.display = "block";
+                barText.textContent = percent + "%";
+            }
+        },
+    });
 }
 
-function bytesToHuman(n) {
-    var t;
-    return n === null || n === undefined ? "" : (t = Number(n), !isFinite(t) || t < 0) ? "" : t >= 1024 * 1024 * 1024 ? (t / (1024 * 1024 * 1024)).toFixed(2) + " GiB" : t >= 1024 * 1024 ? (t / (1024 * 1024)).toFixed(2) + " MiB" : t >= 1024 ? (t / 1024).toFixed(2) + " KiB" : String(Math.floor(t)) + " B"
+const BYTE_UNITS = [
+    { threshold: 1024 ** 3, suffix: " GiB" },
+    { threshold: 1024 ** 2, suffix: " MiB" },
+    { threshold: 1024,      suffix: " KiB" },
+];
+
+function bytesToHuman(bytes) {
+    if (bytes == null) return "";
+    const n = Number(bytes);
+    if (!Number.isFinite(n) || n < 0) return "";
+    for (const { threshold, suffix } of BYTE_UNITS) {
+        if (n >= threshold) return (n / threshold).toFixed(2) + suffix;
+    }
+    return `${Math.floor(n)} B`;
 }
 
-function parseFilenameFromDisposition(n) {
-    var t, i;
-    return n ? (t = /filename\s*=\s*"([^"]+)"/i.exec(n), t && t[1]) ? t[1] : (i = /filename\s*=\s*([^;\s]+)/i.exec(n), i && i[1] ? i[1].replace(/^"|"$/g, "") : "") : ""
+function parseFilenameFromDisposition(dispositionHeader) {
+    if (!dispositionHeader) return "";
+    const quoted = /filename\s*=\s*"([^"]+)"/i.exec(dispositionHeader);
+    if (quoted?.[1]) return quoted[1];
+    const unquoted = /filename\s*=\s*([^;\s]+)/i.exec(dispositionHeader);
+    return unquoted?.[1]?.replace(/^"|"$/g, "") ?? "";
 }
 
-function sanitizeFilenameComponent(n) {
-    return n ? String(n).replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 48) : ""
+function sanitizeFilenameComponent(value) {
+    return value
+        ? String(value).replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 48)
+        : "";
 }
 
 function getNowYYYYMMDD() {
-    var n = new Date, t = n.getFullYear(), i = n.getMonth() + 1, r = n.getDate();
-    return String(t) + String(i).padStart(2, "0") + String(r).padStart(2, "0")
+    const now = new Date();
+    const year  = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day   = String(now.getDate()).padStart(2, "0");
+    return `${year}${month}${day}`;
 }
 
-function makeBackupDownloadName(n) {
-    var u = (APP_STATE.sysinfo && APP_STATE.sysinfo.board && APP_STATE.sysinfo.board.model) ? APP_STATE.sysinfo.board.model : "";
-    var t = sanitizeFilenameComponent(u) || "board";
-    var i = getNowYYYYMMDD();
-    var r = String(n || "backup.bin");
+function makeBackupDownloadName(originalName) {
+    const boardModel = APP_STATE.sysinfo?.board?.model ?? "";
+    const boardComponent = sanitizeFilenameComponent(boardModel) || "board";
+    const dateStamp = getNowYYYYMMDD();
+    let downloadName = String(originalName || "backup.bin");
 
     // Ensure it starts with backup_
-    r.indexOf("backup_") === 0 || (r = "backup_" + r.replace(/^_+/, ""));
+    if (!downloadName.startsWith("backup_")) {
+        downloadName = "backup_" + downloadName.replace(/^_+/, "");
+    }
 
     // Insert board right after backup_ if not already
-    r.indexOf("backup_" + t + "_") === 0 || (r = r.replace(/^backup_/, "backup_" + t + "_"));
+    if (!downloadName.startsWith(`backup_${boardComponent}_`)) {
+        downloadName = downloadName.replace(/^backup_/, `backup_${boardComponent}_`);
+    }
 
     // Ensure .bin extension
-    /\.[A-Za-z0-9]+$/.test(r) || (r = r + ".bin");
+    if (!/\.[A-Za-z0-9]+$/.test(downloadName)) {
+        downloadName += ".bin";
+    }
 
     // Append date before extension if not already present
-    /_\d{8}\.[A-Za-z0-9]+$/.test(r) || (r = r.replace(/(\.[A-Za-z0-9]+)$/, "_" + i + "$1"));
-
-    return r
-}
-
-function parseUserLen(n) {
-    var t, i, r;
-    if (!n) return null;
-    if (n = String(n).trim(), n === "") return null;
-    t = /^\s*(0x[0-9a-fA-F]+|\d+)\s*([a-zA-Z]*)\s*$/.exec(n);
-    if (!t) return null;
-    i = t[1].toLowerCase().indexOf("0x") === 0 ? parseInt(t[1], 16) : parseInt(t[1], 10);
-    if (!isFinite(i) || i < 0) return null;
-    r = (t[2] || "").toLowerCase();
-    return r === "" ? i : r === "k" || r === "kb" || r === "kib" ? i * 1024 : null
-}
-
-function flashSetStatus(n) {
-    var s = document.getElementById("flash_status");
-    var txt = document.getElementById("flash_status_text");
-    var spin = document.getElementById("flash_spinner");
-    var busy = n === t("flash.status.uploading") || n === t("flash.status.restoring");
-    if (!s) return;
-    s.style.display = n ? "flex" : "none";
-    txt && (txt.textContent = n || "");
-    spin && (spin.style.display = busy ? "block" : "none");
-}
-
-function flashSetProgress(n) {
-    var t = document.getElementById("flash_restore_bar"), i;
-    if (!t) return;
-    if (n === null || n === undefined) {
-        t.style.display = "none";
-        return;
-    }
-    i = Math.max(0, Math.min(100, parseInt(n || 0)));
-    t.style.display = "block";
-    t.style.setProperty("--percent", i)
-}
-
-function flashUpdateRangeHint() {
-    var u = document.getElementById("flash_range_hint"), n, i, r;
-    if (!u) return;
-    n = parseUserLen(document.getElementById("flash_start").value);
-    i = parseUserLen(document.getElementById("flash_end").value);
-    n === null || i === null ? u.textContent = t("backup.range.hint") : (r = i >= n ? i - n : 0, u.textContent = "Start=" + bytesToHuman(n) + ", End=" + bytesToHuman(i) + ", Size=" + bytesToHuman(r))
-}
-
-function flashPadHex(n, w) {
-    var s = n.toString(16).toUpperCase();
-    while (s.length < w) s = "0" + s;
-    return s
-}
-
-function flashExtractBytes(text) {
-    var bytes = [];
-    if (!text) return bytes;
-    var m = text.match(/[0-9a-fA-F]{2}/g);
-    if (!m) return bytes;
-    for (var i = 0; i < m.length; i++) bytes.push(parseInt(m[i], 16));
-    return bytes
-}
-
-function flashPosToByteIndex(text, pos) {
-    var i, hex = 0;
-    if (!text || pos <= 0) return 0;
-    for (i = 0; i < pos && i < text.length; i++) {
-        if (/[0-9a-fA-F]/.test(text[i])) hex++;
-    }
-    return Math.floor(hex / 2)
-}
-
-function flashByteIndexToPos(byteIndex) {
-    if (!isFinite(byteIndex) || byteIndex < 0) return 0;
-    var line = Math.floor(byteIndex / 16);
-    var col = byteIndex % 16;
-    return line * 48 + col * 3
-}
-
-function flashSetCaretToByte(byteIndex) {
-    var data = document.getElementById("flash_data");
-    if (!data) return;
-    var pos = flashByteIndexToPos(byteIndex);
-    data.focus();
-    data.setSelectionRange(pos, pos);
-    flashSyncScroll()
-}
-
-function flashFormatHexLines(bytes) {
-    var out = [];
-    for (var i = 0; i < bytes.length; i++) {
-        if (i && i % 16 === 0) out.push("\n");
-        out.push(flashPadHex(bytes[i], 2));
-        if (i % 16 !== 15 && i !== bytes.length - 1) out.push(" ");
-    }
-    return out.join("")
-}
-
-function flashRenderHexViews() {
-    var data = document.getElementById("flash_data");
-    var off = document.getElementById("flash_offset");
-    var asc = document.getElementById("flash_ascii");
-    var start = document.getElementById("flash_start");
-    if (!data || !off || !asc) return;
-    var bytes = flashExtractBytes(data.value || "");
-    var base = start ? parseUserLen(start.value) : 0;
-    base = base === null ? 0 : base;
-    var asciiLines = [];
-    var offLines = [];
-    var i, j, rowBytes, c;
-    for (i = 0; i < bytes.length; i += 16) {
-        rowBytes = bytes.slice(i, i + 16);
-        offLines.push("0x" + flashPadHex(base + i, 8));
-        for (j = 0; j < rowBytes.length; j++) {
-            c = rowBytes[j];
-            asciiLines.push(c >= 0x20 && c <= 0x7E ? String.fromCharCode(c) : ".");
-        }
-        if (rowBytes.length < 16) {
-            for (j = rowBytes.length; j < 16; j++) asciiLines.push(" ");
-        }
-        asciiLines.push("\n");
-    }
-    off.textContent = offLines.join("\n");
-    asc.textContent = asciiLines.join("").replace(/\n$/, "");
-}
-
-function flashNormalizeHexInput() {
-    var data = document.getElementById("flash_data");
-    if (!data) return;
-    var bytes = flashExtractBytes(data.value || "");
-    data.value = flashFormatHexLines(bytes);
-    flashRenderHexViews()
-}
-
-function flashAlignInput(keepCaret) {
-    var data = document.getElementById("flash_data");
-    if (!data) return;
-    var caret = data.selectionStart || 0;
-    var byteIndex = flashPosToByteIndex(data.value || "", caret);
-    var bytes = flashExtractBytes(data.value || "");
-    data.value = flashFormatHexLines(bytes);
-    if (keepCaret)
-        flashSetCaretToByte(byteIndex);
-    flashRenderHexViews()
-}
-
-function flashFormatData() {
-    if (!confirm(t("flash.confirm.format"))) return;
-    flashAlignInput(false);
-    flashSetStatus(t("flash.status.formatted"))
-}
-
-function flashSnapCaret() {
-    var data = document.getElementById("flash_data");
-    if (!data) return;
-    var caret = data.selectionStart || 0;
-    var byteIndex = flashPosToByteIndex(data.value || "", caret);
-    flashSetCaretToByte(byteIndex)
-}
-
-function flashSyncScroll() {
-    var data = document.getElementById("flash_data");
-    var off = document.getElementById("flash_offset");
-    var asc = document.getElementById("flash_ascii");
-    if (!data || !off || !asc) return;
-    off.scrollTop = data.scrollTop;
-    asc.scrollTop = data.scrollTop
-}
-
-function flashJumpToOffset() {
-    var jump = document.getElementById("flash_jump");
-    var start = document.getElementById("flash_start");
-    var data = document.getElementById("flash_data");
-    if (!jump || !data) return;
-    var target = parseUserLen(jump.value);
-    if (target === null) {
-        flashSetStatus(t("flash.error.jump"));
-        return
-    }
-    var base = start ? parseUserLen(start.value) : 0;
-    base = base === null ? 0 : base;
-    var bytes = flashExtractBytes(data.value || "");
-    var byteIndex = target - base;
-    if (byteIndex < 0 || byteIndex >= bytes.length) {
-        flashSetStatus(t("flash.error.jump"));
-        return
-    }
-    flashSetCaretToByte(byteIndex);
-    var lineHeight = parseFloat(getComputedStyle(data).lineHeight) || 18;
-    var line = Math.floor(byteIndex / 16);
-    data.scrollTop = line * lineHeight;
-    flashSyncScroll();
-    flashSetStatus("")
-}
-
-function flashFindLastBefore(str, sub, limit) {
-    var idx = -1, cur = str.indexOf(sub);
-    while (cur !== -1 && cur < limit) {
-        idx = cur;
-        cur = str.indexOf(sub, cur + 1)
-    }
-    return idx
-}
-
-function flashParseBackupFilename(name) {
-    if (!name) return null;
-    var rangeIdx = name.indexOf("_0x"), dashIdx, startStr, endStr, start, end;
-    if (rangeIdx < 0) return null;
-    dashIdx = name.indexOf("-0x", rangeIdx);
-    if (dashIdx < 0) return null;
-    startStr = name.slice(rangeIdx + 1, dashIdx);
-    endStr = name.slice(dashIdx + 1);
-    start = /^0x[0-9a-fA-F]+/.exec(startStr);
-    end = /^0x[0-9a-fA-F]+/.exec(endStr);
-    if (!start || !end) return null;
-    start = parseInt(start[0], 16);
-    end = parseInt(end[0], 16);
-    if (!isFinite(start) || !isFinite(end) || end <= start) return null;
-    var mtdIdx = flashFindLastBefore(name, "_mtd_", rangeIdx);
-    var mmcIdx = flashFindLastBefore(name, "_mmc_", rangeIdx);
-    var stypeIdx = mtdIdx >= 0 && mmcIdx >= 0 ? (mtdIdx > mmcIdx ? mtdIdx : mmcIdx) : (mtdIdx >= 0 ? mtdIdx : mmcIdx);
-    if (stypeIdx < 0) return null;
-    var storage = stypeIdx === mtdIdx ? "mtd" : "mmc";
-    var seg = name.slice(stypeIdx + 5, rangeIdx);
-    if (!seg) return null;
-    var parts = seg.split("_");
-    var target = parts[parts.length - 1];
-    if (!target) return null;
-    return { storage: storage, target: target, start: start, end: end }
-}
-
-function flashSelectTarget(val) {
-    var sel = document.getElementById("flash_target"), i;
-    if (!sel) return false;
-    for (i = 0; i < sel.options.length; i++) if (sel.options[i].value === val) {
-        sel.selectedIndex = i;
-        return true
-    }
-    return false
-}
-
-function flashGetDeviceNameByStorage(storage) {
-    var bi = APP_STATE && APP_STATE.backupinfo ? APP_STATE.backupinfo : null;
-    var mmcName = "";
-    var mtdName = "";
-    if (bi && bi.mmc && bi.mmc.present) {
-        mmcName = [bi.mmc.vendor || "", bi.mmc.product || ""].join(" ").trim();
-        if (!mmcName) mmcName = "MMC";
-    }
-    if (bi && bi.mtd && bi.mtd.present) {
-        mtdName = (bi.mtd.model || "").trim();
-        if (!mtdName) mtdName = "MTD";
-    }
-    if (storage === "mtd") return mtdName || "MTD";
-    if (storage === "mmc") return mmcName || "MMC";
-    return mtdName || mmcName || "device";
-}
-
-function flashBuildErasePlan() {
-    var target = document.getElementById("flash_target");
-    var startEl = document.getElementById("flash_start");
-    var endEl = document.getElementById("flash_end");
-    var v, seg, storage, tname, isRaw, startStr, endStr, hasStart, hasEnd, start, end;
-    var targetLabel, detail;
-
-    if (!target || !target.value)
-        return { error: t("flash.error.no_target") };
-
-    v = String(target.value);
-    seg = v.split(":");
-    storage = seg.length > 1 ? seg[0] : "auto";
-    tname = seg.length > 1 ? seg.slice(1).join(":") : v;
-    isRaw = tname === "raw";
-
-    startStr = startEl && startEl.value ? String(startEl.value).trim() : "";
-    endStr = endEl && endEl.value ? String(endEl.value).trim() : "";
-    hasStart = !!startStr;
-    hasEnd = !!endStr;
-
-    if (hasStart !== hasEnd)
-        return { error: t("flash.error.bad_range") };
-
-    if (hasStart && hasEnd) {
-        start = parseUserLen(startStr);
-        end = parseUserLen(endStr);
-        if (start === null || end === null || end <= start)
-            return { error: t("flash.error.bad_range") };
+    if (!/_\d{8}\.[A-Za-z0-9]+$/.test(downloadName)) {
+        downloadName = downloadName.replace(/(\.[A-Za-z0-9]+)$/, `_${dateStamp}$1`);
     }
 
-    if (isRaw && !hasStart)
-        return { error: t("flash.error.bad_range") + " (raw target requires start/end)" };
-
-    targetLabel = isRaw ? "" : (tname + " 分区");
-    if (hasStart)
-        detail = isRaw ? ("0x" + start.toString(16) + "~0x" + end.toString(16)) :
-            (targetLabel + " 的 0x" + start.toString(16) + "~0x" + end.toString(16));
-    else
-        detail = targetLabel;
-
-    return {
-        storage: storage,
-        target: v,
-        hasRange: hasStart,
-        start: hasStart ? start : null,
-        end: hasStart ? end : null,
-        detail: detail,
-        deviceName: flashGetDeviceNameByStorage(storage)
-    };
+    return downloadName;
 }
 
-function flashInit() {
-    var target = document.getElementById("flash_target");
-    var start = document.getElementById("flash_start");
-    var end = document.getElementById("flash_end");
-    var data = document.getElementById("flash_data");
-    var info = document.getElementById("flash_info");
-    var restoreInfo = document.getElementById("flash_restore_info");
-    var backup = document.getElementById("flash_backup");
+const SIZE_SUFFIX_MULTIPLIERS = {
+    "":    1,
+    k:     1024,        kb:  1024,        kib: 1024,
+    m:     1024 ** 2,   mb:  1024 ** 2,   mib: 1024 ** 2,
+    g:     1024 ** 3,   gb:  1024 ** 3,   gib: 1024 ** 3,
+};
 
-    start && (start.oninput = function () { flashUpdateRangeHint(); flashRenderHexViews(); });
-    end && (end.oninput = flashUpdateRangeHint);
-    flashUpdateRangeHint();
-    flashRenderHexViews();
+function parseUserLen(input) {
+    if (!input) return null;
+    const trimmed = String(input).trim();
+    if (!trimmed) return null;
+    const match = /^\s*(0x[0-9a-fA-F]+|\d+)\s*([a-zA-Z]*)\s*$/.exec(trimmed);
+    if (!match) return null;
 
-    flashSetStatus("");
+    const rawNumber = match[1];
+    const suffix    = match[2].toLowerCase();
+    const numericValue = rawNumber.toLowerCase().startsWith("0x")
+        ? parseInt(rawNumber, 16)
+        : parseInt(rawNumber, 10);
+    if (!Number.isFinite(numericValue) || numericValue < 0) return null;
 
-    if (data) {
-        data.addEventListener("input", function () { flashAlignInput(true); });
-        data.addEventListener("blur", function () { flashAlignInput(false); });
-        data.addEventListener("click", flashSnapCaret);
-        data.addEventListener("keyup", flashSnapCaret);
-        data.addEventListener("scroll", flashSyncScroll);
-    }
-
-    backup && (backup.onchange = function () {
-        var f = backup.files && backup.files.length ? backup.files[0] : null;
-        var d = f ? flashParseBackupFilename(f.name) : null;
-        if (!d) {
-            restoreInfo && (restoreInfo.textContent = t("flash.detected.none"));
-            return
-        }
-        restoreInfo && (restoreInfo.textContent = d.storage + ":" + d.target + " 0x" + d.start.toString(16) + "-0x" + d.end.toString(16));
-        flashSelectTarget(d.storage + ":" + d.target);
-        start && (start.value = "0x" + d.start.toString(16));
-        end && (end.value = "0x" + d.end.toString(16));
-        flashUpdateRangeHint();
-        flashRenderHexViews();
-    });
-
-    ajax({
-        url: "/backup/info",
-        done: function (u) {
-            var r, e, o, s, f;
-            try {
-                r = JSON.parse(u)
-            } catch (h) {
-                flashSetStatus("backupinfo parse failed");
-                return
-            }
-            info && (o = [], r.mmc && r.mmc.present ? o.push("MMC: " + (r.mmc.vendor || "") + " " + (r.mmc.product || "")) : o.push("MMC: " + t("backup.storage.not_present")), r.mtd && r.mtd.present ? o.push("MTD: " + (r.mtd.model || "")) : o.push("MTD: " + t("backup.storage.not_present")), info.textContent = o.join(" | "));
-            if (!target) return;
-            target.options.length = 0;
-            s = document.createElement("option");
-            s.value = "";
-            s.dataset.i18nKey = "backup.target.placeholder";
-            target.appendChild(s);
-            r.mmc && r.mmc.present && (f = document.createElement("option"), f.value = "mmc:raw", f.textContent = "[MMC] raw", target.appendChild(f), r.mmc.parts && r.mmc.parts.length && r.mmc.parts.forEach(function (t) {
-                var i;
-                t && t.name && (i = document.createElement("option"), i.value = "mmc:" + t.name, i.textContent = "[MMC] " + t.name + (t.size ? " (" + bytesToHuman(t.size) + ")" : ""), target.appendChild(i))
-            }));
-            r.mtd && r.mtd.present && r.mtd.parts && r.mtd.parts.length && r.mtd.parts.forEach(function (t) {
-                var i;
-                t && t.name && (i = document.createElement("option"), i.value = "mtd:" + t.name, i.textContent = "[MTD] " + t.name + (t.size ? " (" + bytesToHuman(t.size) + ")" : ""), target.appendChild(i))
-            });
-            target.options.length > 1 && (target.selectedIndex = 1);
-            applyI18n(target)
-        }
-    })
-}
-
-async function flashRead() {
-    var target = document.getElementById("flash_target");
-    var start = document.getElementById("flash_start");
-    var end = document.getElementById("flash_end");
-    var data = document.getElementById("flash_data");
-    if (!target || !start || !end) return;
-    if (!target.value) {
-        alert(t("flash.error.no_target"));
-        return
-    }
-    if (!start.value || !end.value) {
-        alert(t("flash.error.bad_range"));
-        return
-    }
-    try {
-        flashSetStatus(t("flash.status.reading"));
-        var fd = new FormData();
-        fd.append("op", "read");
-        fd.append("storage", "auto");
-        fd.append("target", target.value);
-        fd.append("start", start.value);
-        fd.append("end", end.value);
-        var r = await fetch("/flash/read", { method: "POST", body: fd });
-        var txt = await r.text();
-        if (!r.ok) {
-            flashSetStatus(t("flash.status.http") + " " + r.status + (txt ? ": " + txt : ""));
-            return
-        }
-        var j;
-        try { j = JSON.parse(txt); } catch (e) { flashSetStatus(t("flash.status.error") + " parse"); return; }
-        if (!j || !j.ok) {
-            flashSetStatus(t("flash.status.error") + " " + (j && j.error ? j.error : ""));
-            return
-        }
-        data && (data.value = j.data || "");
-        flashNormalizeHexInput();
-        flashSetStatus(t("flash.status.done"))
-    } catch (e) {
-        flashSetStatus(t("flash.status.error") + " " + (e && e.message ? e.message : String(e)))
-    }
-}
-
-async function flashWrite() {
-    var target = document.getElementById("flash_target");
-    var start = document.getElementById("flash_start");
-    var data = document.getElementById("flash_data");
-    if (!target || !start || !data) return;
-    if (!target.value) {
-        alert(t("flash.error.no_target"));
-        return
-    }
-    if (!start.value) {
-        alert(t("flash.error.bad_range"));
-        return
-    }
-    if (!data.value || !data.value.trim()) {
-        alert(t("flash.error.no_data"));
-        return
-    }
-    if (!confirm(t("flash.confirm.write"))) return;
-    try {
-        flashSetStatus(t("flash.status.writing"));
-        var fd = new FormData();
-        fd.append("op", "write");
-        fd.append("storage", "auto");
-        fd.append("target", target.value);
-        fd.append("start", start.value);
-        fd.append("data", data.value);
-        var r = await fetch("/flash/write", { method: "POST", body: fd });
-        var txt = await r.text();
-        if (!r.ok) {
-            flashSetStatus(t("flash.status.http") + " " + r.status + (txt ? ": " + txt : ""));
-            return
-        }
-        var j;
-        try { j = JSON.parse(txt); } catch (e) { flashSetStatus(t("flash.status.error") + " parse"); return; }
-        if (!j || !j.ok) {
-            flashSetStatus(t("flash.status.error") + " " + (j && j.error ? j.error : ""));
-            return
-        }
-        flashSetStatus(t("flash.status.done"))
-    } catch (e) {
-        flashSetStatus(t("flash.status.error") + " " + (e && e.message ? e.message : String(e)))
-    }
-}
-
-async function flashErase() {
-    var plan = flashBuildErasePlan();
-    var fd, r, txt, j;
-
-    if (plan.error) {
-        alert(plan.error);
-        return;
-    }
-
-    if (!confirm(t("flash.confirm.erase")))
-        return;
-
-    var confirmDetail = t("flash.confirm.erase_detail")
-        .replace("{device}", plan.deviceName)
-        .replace("{detail}", plan.detail);
-
-    if (!confirm(confirmDetail))
-        return;
-
-    try {
-        flashSetStatus(t("flash.status.erasing"));
-        fd = new FormData();
-        fd.append("op", "erase");
-        fd.append("storage", "auto");
-        fd.append("target", plan.target);
-        if (plan.hasRange) {
-            fd.append("start", "0x" + plan.start.toString(16));
-            fd.append("end", "0x" + plan.end.toString(16));
-        }
-
-        r = await fetch("/flash/erase", { method: "POST", body: fd });
-        txt = await r.text();
-        if (!r.ok) {
-            flashSetStatus(t("flash.status.http") + " " + r.status + (txt ? ": " + txt : ""));
-            return;
-        }
-
-        try { j = JSON.parse(txt); } catch (e) {
-            flashSetStatus(t("flash.status.error") + " parse");
-            return;
-        }
-
-        if (!j || !j.ok) {
-            flashSetStatus(t("flash.status.error") + " " + (j && j.error ? j.error : ""));
-            return;
-        }
-
-        flashSetStatus(t("flash.status.done"));
-    } catch (e) {
-        flashSetStatus(t("flash.status.error") + " " + (e && e.message ? e.message : String(e)));
-    }
-}
-
-async function flashRestore() {
-    var target = document.getElementById("flash_target");
-    var start = document.getElementById("flash_start");
-    var end = document.getElementById("flash_end");
-    var backup = document.getElementById("flash_backup");
-    var file, baseStart, baseEnd, totalSize;
-    var chunkSize = 4 * 1024 * 1024;
-    var useChunked;
-
-    function toHex(n) {
-        return "0x" + n.toString(16);
-    }
-
-    async function sendChunk(blob, chunkOffset, chunkEnd, totalSize, baseStart) {
-        return await new Promise(function (resolve, reject) {
-            var fd = new FormData();
-            fd.append("op", "restore");
-            fd.append("backup", blob, "restore_chunk.bin");
-            target && target.value && fd.append("target", target.value);
-            fd.append("start", toHex(baseStart + chunkOffset));
-            fd.append("end", toHex(baseStart + chunkEnd));
-            fd.append("storage", "auto");
-
-            var xhr = new XMLHttpRequest();
-            xhr.upload.onprogress = function (evt) {
-                if (!evt || !evt.lengthComputable) return;
-                flashSetProgress((chunkOffset + evt.loaded) / totalSize * 100);
-            };
-            xhr.upload.onload = function () {
-                flashSetProgress((chunkOffset + (chunkEnd - chunkOffset)) / totalSize * 100);
-                flashSetStatus(t("flash.status.restoring"));
-            };
-            xhr.onreadystatechange = function () {
-                if (xhr.readyState !== 4) return;
-                if (xhr.status !== 200) {
-                    flashSetStatus(t("flash.status.http") + " " + xhr.status + (xhr.responseText ? ": " + xhr.responseText : ""));
-                    flashSetProgress(null);
-                    reject(new Error("http"));
-                    return;
-                }
-                var j;
-                try { j = JSON.parse(xhr.responseText); } catch (e) {
-                    flashSetStatus(t("flash.status.error") + " parse");
-                    flashSetProgress(null);
-                    reject(e);
-                    return;
-                }
-                if (!j || !j.ok) {
-                    flashSetStatus(t("flash.status.error") + " " + (j && j.error ? j.error : ""));
-                    flashSetProgress(null);
-                    reject(new Error("bad"));
-                    return;
-                }
-                if (j.alert)
-                    window.__flash_restore_alert = j.alert;
-                resolve();
-            };
-            xhr.open("POST", "/flash/restore");
-            xhr.send(fd);
-        });
-    }
-
-    if (!backup || !backup.files || !backup.files.length) {
-        alert(t("flash.error.no_file"));
-        return
-    }
-    if (!confirm(t("flash.confirm.restore"))) return;
-    try {
-        file = backup.files[0];
-        totalSize = file ? file.size : 0;
-        baseStart = start ? parseUserLen(start.value) : null;
-        baseEnd = end ? parseUserLen(end.value) : null;
-        if ((baseStart === null || baseEnd === null) && file && file.name) {
-            var parsed = flashParseBackupFilename(file.name);
-            if (parsed) {
-                baseStart = parsed.start;
-                baseEnd = parsed.end;
-                if (target && !target.value && parsed.storage && parsed.target)
-                    flashSelectTarget(parsed.storage + ":" + parsed.target);
-                start && (start.value = toHex(baseStart));
-                end && (end.value = toHex(baseEnd));
-            }
-        }
-        if (baseStart === null || baseEnd === null || baseEnd <= baseStart) {
-            flashSetStatus(t("flash.error.bad_range"));
-            return;
-        }
-        if ((baseEnd - baseStart) !== totalSize) {
-            flashSetStatus(t("flash.error.bad_range"));
-            return;
-        }
-
-        useChunked = totalSize > chunkSize;
-        flashSetProgress(0);
-        flashSetStatus(t("flash.status.uploading"));
-
-        if (!useChunked) {
-            await sendChunk(file, 0, totalSize, totalSize, baseStart);
-        } else {
-            var offset = 0;
-            while (offset < totalSize) {
-                var next = Math.min(offset + chunkSize, totalSize);
-                var blob = file.slice(offset, next);
-                await sendChunk(blob, offset, next, totalSize, baseStart);
-                offset = next;
-            }
-        }
-
-        flashSetProgress(100);
-        flashSetStatus(t("flash.status.done"));
-        alert(t("flash.status.restored", window.__flash_restore_alert || "Backup restore completed."));
-        window.__flash_restore_alert = "";
-    } catch (e) {
-        flashSetStatus(t("flash.status.error") + " " + (e && e.message ? e.message : String(e)))
-    }
-}
-
-function setBackupStatus(n) {
-    var t = document.getElementById("backup_status");
-    t && (t.style.display = n ? "block" : "none", t.textContent = n || "")
-}
-
-function setBackupProgress(n) {
-    var t = document.getElementById("bar"), i;
-    t && (i = Math.max(0, Math.min(100, parseInt(n || 0))), t.style.display = "block", t.style.setProperty("--percent", i))
-}
-
-function backupUpdateRangeHint() {
-    var u = document.getElementById("backup_range_hint"), n, i, r;
-    u && (n = parseUserLen(document.getElementById("backup_start").value), i = parseUserLen(document.getElementById("backup_end").value), n === null || i === null ? u.textContent = t("backup.range.hint") : (r = i >= n ? i - n : 0, u.textContent = "Start=" + bytesToHuman(n) + ", End=" + bytesToHuman(i) + ", Size=" + bytesToHuman(r)))
-}
-
-function backupRefreshI18n() {
-    var n = document.getElementById("backup_target"), t, r, u;
-    if (!n) return;
-    for (t = 0; t < n.options.length; t++) r = n.options[t], r && r.dataset && r.dataset.i18nKey && (r.textContent = window.t(r.dataset.i18nKey));
-    for (t = 0; t < n.options.length; t++) {
-        r = n.options[t];
-        if (!r || !r.dataset) continue;
-        r.dataset.kind === "mtd-full" && (u = r.dataset.mtdName || "", r.textContent = "[MTD] " + window.t("backup.target.full_disk") + (u ? " (" + u + ")" : "") + (r.dataset.size ? " (" + bytesToHuman(parseInt(r.dataset.size, 10)) + ")" : ""))
-    }
-}
-
-function backupInit() {
-    var u = document.getElementById("backup_mode"), r = document.getElementById("backup_range"), n = document.getElementById("backup_target"), s = document.getElementById("backup_target_field"), c = document.getElementById("backup_mode_target_row"), updateBackupUi, f, e;
-    function o(t) {
-        for (var i = 0; i < n.options.length; i++) if (n.options[i].value === t) return n.selectedIndex = i, true;
-        return false
-    }
-    function h(t) {
-        for (var i = 0; i < n.options.length; i++) if (n.options[i].dataset && n.options[i].dataset.kind === t) return n.selectedIndex = i, true;
-        return false
-    }
-    function l() {
-        for (var t = 0; t < n.options.length; t++) if (n.options[t].value) {
-            n.selectedIndex = t;
-            return true
-        }
-        return false
-    }
-    function a() {
-        var t, i;
-        if (!n || n.options.length <= 1) return;
-        t = n.options[n.selectedIndex];
-        i = t && t.dataset ? t.dataset.kind : "";
-        (i === "mmc-part" || i === "mtd-part" || !n.value) && (o("mmc:raw") || h("mtd-full") || l())
-    }
-    u && r && n && (updateBackupUi = function () {
-        var t = u.value === "range";
-        t ? (r.style.display = "block", a(), backupUpdateRangeHint()) : (r.style.display = "none");
-        s && (s.style.display = t ? "none" : "");
-        c && (c.style.gridTemplateColumns = t ? "1fr" : "")
-    }, u.onchange = updateBackupUi, f = document.getElementById("backup_start"), e = document.getElementById("backup_end"), f && (f.oninput = backupUpdateRangeHint), e && (e.oninput = backupUpdateRangeHint), updateBackupUi(), setBackupStatus(""), ajax({
-        url: "/backup/info",
-        done: function (u) {
-            var r, e, o, s, f;
-            try {
-                r = JSON.parse(u)
-            } catch (h) {
-                setBackupStatus("backupinfo parse failed");
-                return
-            }
-            e = document.getElementById("backup_info");
-            e && (o = [], r.mmc && r.mmc.present ? o.push("MMC: " + (r.mmc.vendor || "") + " " + (r.mmc.product || "")) : o.push("MMC: " + t("backup.storage.not_present")), r.mtd && r.mtd.present ? o.push("MTD: " + (r.mtd.model || "")) : o.push("MTD: " + t("backup.storage.not_present")), e.textContent = o.join(" | "));
-            n.options.length = 0;
-            s = document.createElement("option");
-            s.value = "";
-            s.dataset.i18nKey = "backup.target.placeholder";
-            n.appendChild(s);
-            r.mmc && r.mmc.present && (f = document.createElement("option"), f.value = "mmc:raw", f.textContent = "[MMC] raw", f.dataset.kind = "mmc-raw", n.appendChild(f), r.mmc.parts && r.mmc.parts.length && r.mmc.parts.forEach(function (t) {
-                var i;
-                t && t.name && (i = document.createElement("option"), i.value = "mmc:" + t.name, i.textContent = "[MMC] " + t.name + (t.size ? " (" + bytesToHuman(t.size) + ")" : ""), i.dataset.kind = "mmc-part", n.appendChild(i))
-            }));
-
-            if (r.mtd && r.mtd.present && r.mtd.parts && r.mtd.parts.length) {
-                var c = r.mtd.type, l = c === 3 || c === 4 || c === 8, a = [];
-                l && r.mtd.parts.forEach(function (n) {
-                    n && n.name && n.master && a.push(n)
-                });
-
-                l && a.length && a.forEach(function (p) {
-                    var i = document.createElement("option");
-                    i.value = "mtd:" + p.name;
-                    i.dataset.mtdName = p.name;
-                    i.dataset.size = p.size ? String(p.size) : "";
-                    i.dataset.kind = "mtd-full";
-                    n.appendChild(i)
-                });
-
-                r.mtd.parts.forEach(function (t) {
-                    var i;
-                    if (!t || !t.name) return;
-                    if (l && t.master) return;
-                    i = document.createElement("option");
-                    i.value = "mtd:" + t.name;
-                    i.textContent = "[MTD] " + t.name + (t.size ? " (" + bytesToHuman(t.size) + ")" : "");
-                    i.dataset.kind = "mtd-part";
-                    n.appendChild(i)
-                })
-            }
-            n.options.length > 1 && (n.selectedIndex = 1);
-            backupRefreshI18n();
-            updateBackupUi && updateBackupUi()
-        }
-    }))
-}
-
-async function startBackup() {
-    var u = document.getElementById("backup_mode"), f = document.getElementById("backup_target"), i, r, e, o, s, h, c, l, a, v, y, p, w, b, k;
-    if (!u || !f) return;
-    if (i = u.value, r = f.value, !r) {
-        alert(t("backup.error.no_target"));
-        return
-    }
-    e = new FormData;
-    e.append("mode", i);
-    e.append("storage", "auto");
-    e.append("target", r);
-    if (i === "range") {
-        o = document.getElementById("backup_start");
-        s = document.getElementById("backup_end");
-        if (!o || !s || !o.value || !s.value) {
-            alert(t("backup.error.bad_range"));
-            return
-        }
-        e.append("start", o.value);
-        e.append("end", s.value)
-    }
-    setBackupProgress(0);
-    setBackupStatus(t("backup.status.starting"));
-    try {
-        h = await fetch("/backup/main", { method: "POST", body: e });
-        if (!h.ok) {
-            setBackupStatus(t("backup.error.http") + " " + h.status);
-            return
-        }
-        c = h.headers.get("Content-Length");
-        l = c ? parseInt(c, 10) : 0;
-        a = parseFilenameFromDisposition(h.headers.get("Content-Disposition"));
-        a || (a = "backup.bin");
-        // Ensure we have board info for filename even on pages without #sysinfo
-        await ensureSysInfoLoaded();
-        a = makeBackupDownloadName(a);
-        v = 0;
-        if (window.showSaveFilePicker) {
-            y = await window.showSaveFilePicker({ suggestedName: a, types: [{ description: "Binary", accept: { "application/octet-stream": [".bin"] } }] });
-            p = await y.createWritable();
-            w = h.body.getReader();
-            while (true) {
-                b = await w.read();
-                if (b.done) break;
-                await p.write(b.value);
-                v += b.value.length;
-                l ? setBackupProgress(v / l * 100) : setBackupProgress(0);
-                setBackupStatus(t("backup.status.downloading") + " " + bytesToHuman(v) + (l ? " / " + bytesToHuman(l) : ""))
-            }
-            await p.close();
-            setBackupProgress(100);
-            setBackupStatus(t("backup.status.done") + " " + a)
-        } else {
-            k = [];
-            w = h.body.getReader();
-            while (true) {
-                b = await w.read();
-                if (b.done) break;
-                k.push(b.value);
-                v += b.value.length;
-                l ? setBackupProgress(v / l * 100) : setBackupProgress(0);
-                setBackupStatus(t("backup.status.downloading") + " " + bytesToHuman(v) + (l ? " / " + bytesToHuman(l) : ""))
-            }
-            setBackupProgress(100);
-            setBackupStatus(t("backup.status.preparing"));
-            p = new Blob(k, { type: "application/octet-stream" });
-            y = document.createElement("a");
-            y.href = URL.createObjectURL(p);
-            y.download = a;
-            document.body.appendChild(y);
-            y.click();
-            document.body.removeChild(y);
-            setBackupStatus(t("backup.status.done") + " " + a)
-        }
-    } catch (d) {
-        setBackupStatus(t("backup.error.exception") + " " + (d && d.message ? d.message : String(d)))
-    }
-}
-
-APP_STATE = {
-    lang: "en",
-    theme: "auto",
-    page: ""
+    const multiplier = SIZE_SUFFIX_MULTIPLIERS[suffix];
+    return multiplier === undefined ? null : Math.floor(numericValue * multiplier);
 }

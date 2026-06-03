@@ -5,10 +5,11 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>Flash Editor</title>
-	<script src="/themeloader.js"></script>
+	<script src="/theme.js"></script>
 	<link rel="stylesheet" href="/style.css">
 	<script src="/i18n.js"></script>
 	<script src="/main.js"></script>
+	<script src="/flash_js.js"></script>
 </head>
 
 <body onload="appInit('flash')" data-page="flash">
@@ -17,6 +18,13 @@
 		<div class="main">
 			<div id="m">
 				<div class="card-head">
+					<div class="upload-hero" aria-hidden="true">
+						<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+							<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+							<path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+							<path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+						</svg>
+					</div>
 					<h1 data-i18n="flash.title">FLASH EDITOR</h1>
 					<p id="hint" data-i18n-html="flash.hint">
 						Read and write raw flash ranges using <strong>hex</strong>.

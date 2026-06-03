@@ -9,6 +9,8 @@
 
 #define MTD_LAYOUT_ENV		"mtd_layout"
 #define MTD_LAYOUT_ENV_LEGACY	"mtd_layout_label"
+#define MTD_LAYOUT_CUSTOM_LABEL	"custom"
+#define MTD_LAYOUT_CUSTOM_ENV	"mtd_layout_custom"
 
 #ifdef CONFIG_MEDIATEK_MTD_LAYOUT_PRINT
 static void log_mtd_layout_state(const char *layout_label, const char *mtdids,
@@ -39,12 +41,41 @@ static ofnode ofnode_get_mtd_layout(const char *layout_label)
 
 	ofnode_for_each_subnode(layout, node) {
 		label = ofnode_read_string(layout, "label");
-		if (!strcmp(layout_label, label)) {
+		if (label && !strcmp(layout_label, label)) {
 			return layout;
 		}
 	}
 
 	return ofnode_null();
+}
+
+static ofnode ofnode_get_default_mtd_layout(void)
+{
+	ofnode node, layout;
+
+	layout = ofnode_get_mtd_layout("default");
+	if (ofnode_valid(layout))
+		return layout;
+
+	node = ofnode_path("/mtd-layout");
+	if (!ofnode_valid(node) || !ofnode_get_child_count(node))
+		return ofnode_null();
+
+	return ofnode_first_subnode(node);
+}
+
+static const char *get_custom_mtdparts(void)
+{
+	const char *parts;
+
+	if (!(gd->flags & GD_FLG_ENV_READY))
+		return NULL;
+
+	parts = env_get(MTD_LAYOUT_CUSTOM_ENV);
+	if (parts && parts[0])
+		return parts;
+
+	return NULL;
 }
 
 const char *get_mtd_layout_label(void)
@@ -90,10 +121,19 @@ void board_mtdparts_default(const char **mtdids, const char **mtdparts)
 	const char *sysupgrade_kernel_ubipart = NULL;
 	const char *sysupgrade_rootfs_ubipart = NULL;
 	const char *cmdline = NULL;
+	const char *custom_parts = NULL;
 	ofnode layout_node;
 
 	layout_label = get_mtd_layout_label();
-	layout_node = ofnode_get_mtd_layout(layout_label);
+	if (!strcmp(layout_label, MTD_LAYOUT_CUSTOM_LABEL)) {
+		custom_parts = get_custom_mtdparts();
+		if (custom_parts)
+			layout_node = ofnode_get_default_mtd_layout();
+		else
+			layout_node = ofnode_get_mtd_layout("default");
+	} else {
+		layout_node = ofnode_get_mtd_layout(layout_label);
+	}
 
 	if (ofnode_valid(layout_node)) {
 		ids = ofnode_read_string(layout_node, "mtdids");
@@ -104,6 +144,11 @@ void board_mtdparts_default(const char **mtdids, const char **mtdparts)
 		sysupgrade_rootfs_ubipart = ofnode_read_string(layout_node, "sysupgrade_rootfs_ubipart");
 		cmdline = ofnode_read_string(layout_node, "cmdline");
 	}
+
+	if (custom_parts)
+		parts = custom_parts;
+	else if (!strcmp(layout_label, MTD_LAYOUT_CUSTOM_LABEL))
+		layout_label = "default";
 
 	if (ids && parts) {
 		*mtdids = ids;

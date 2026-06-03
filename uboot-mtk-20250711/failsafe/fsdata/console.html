@@ -5,10 +5,11 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title data-i18n="console.title">WEB CONSOLE</title>
-	<script src="/themeloader.js"></script>
+	<script src="/theme.js"></script>
 	<link rel="stylesheet" href="/style.css">
 	<script src="/i18n.js"></script>
 	<script src="/main.js"></script>
+	<script src="/console_js.js"></script>
 </head>
 
 <body onload="appInit('console')" data-page="console">
@@ -17,6 +18,12 @@
 		<div class="main">
 			<div id="m">
 				<div class="card-head">
+					<div class="upload-hero" aria-hidden="true">
+						<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+							<polyline points="4 17 10 11 4 5"></polyline>
+							<line x1="12" y1="19" x2="20" y2="19"></line>
+						</svg>
+					</div>
 					<h1 data-i18n="console.title">WEB CONSOLE</h1>
 					<p id="hint" data-i18n-html="console.hint">
 						Run <strong>U-Boot commands</strong> directly in your browser.

@@ -1,6 +1,6 @@
 # ATF and u-boot for mt798x with DHCPD
 
-A modified version of hanwckf's U-Boot for MT798x by Yuzhii, with support for DHCPD and a beautiful web UI. (Builds available for versions 2022/2023/2024/2025)
+A modified version of hanwckf's U-Boot for MT798x by Yuzhii, with support for DHCPD and a beautiful web UI. (Builds available for versions 2025/SP1/SP2)
 
 Supports GitHub Actions for automatic builds, and can generate both normal and overclocked BL2.
 
@@ -19,18 +19,19 @@ U-Boot 2025 adds more features:
 - Theme manager
 - I18N support
 - Device reboot
+- UBI volume management
 
 ![Version-2025](document/pictures/uboot-2025.png)
 
 You can configure the features you need.
 
 - [x] MTK_DHCPD
-  - [x] MTK_DHCPD_ENHANCED
   - [x] MTK_DHCPD_USE_CONFIG_IP
   - MTK_DHCPD_POOL_START_HOST default 100
   - MTK_DHCPD_POOL_SIZE default 101
+- [ ] MTK_TELNETD
 - Failsafe Web UI style:
-  - [x] WEBUI_FAILSAFE_UI_NEW
+  - [x] WEBUI_FAILSAFE_UI_BOOTSTRAP
     - [x] WEBUI_FAILSAFE_I18N
   - [ ] WEBUI_FAILSAFE_UI_GL
   - [ ] WEBUI_FAILSAFE_UI_MTK
@@ -41,29 +42,65 @@ You can configure the features you need.
   - [x] WEBUI_FAILSAFE_ENV - Enable environment manager
   - [x] WEBUI_FAILSAFE_CONSOLE - Enable web terminal
   - [x] WEBUI_FAILSAFE_FLASH - Enable flash editor
+  - [x] WEBUI_FAILSAFE_UBI - Enable UBI volume management
 
 ## Prepare
 
 ```bash
-sudo apt install gcc-aarch64-linux-gnu build-essential flex bison libssl-dev device-tree-compiler qemu-user-static
+sudo apt install gcc-aarch64-linux-gnu build-essential flex bison libssl-dev device-tree-compiler qemu-user-static nodejs npm
 ```
 
 > If you want to build for arm v7l devices, you also need to install `gcc-arm-linux-gnueabi`
+>
+> The failsafe web UI assets are minified at build time. If you build the U-Boot manually, run `npm install` once in `uboot-mtk-20250711/failsafe` so the local minifier dependency is available(It will auto install by `build.sh` tool).
 
 ## Build
 
-example:
+Configure once with:
 
 ```bash
-chmod +x build.sh
+make menuconfig
+```
+
+Then build the current `.config` selection:
+
+```bash
+make
+```
+
+In `make menuconfig`, you can control whether `make` runs FIP (`build.sh`), ATF (`compile_atf.sh`), and GPT (`generate_gpt.sh`) with:
+
+- `BUILD_FIP`
+- `BUILD_ATF`
+- `BUILD_GPT`
+
+Build every board with the selected version by using:
+
+```bash
+make all
+```
+
+For help:
+
+```bash
+make help
+```
+
+Single model examples:
+
+```bash
 # mt7981, emmc device
-BOARD=sn_r1 ./build.sh
-# mt7981, spi-nand device, nonmbm device
-BOARD=zbt_z8103ax-c VARIANT=NONMBM ./build.sh
-# mt7981, spi-nand device, multi-layout device
-BOARD=cmcc_a10 VERSION=SP2 MULTI_LAYOUT=1 ./build.sh
-# mt7986, spi-nand device, multi-layout device, single image upgrade support
-BOARD=ruijie_rg-x60-new VERSION=SP1 MULTI_LAYOUT=1 SIMG=1 ./build.sh
+make BOARD=sn_r1
+# mt7981, spi-nand device, nonmbm device, multi-layout support
+make BOARD=zbt_z8103ax-c VARIANT=NONMBM
+# mt7986, spi-nand device, multi-layout support, single image upgrade support
+make BOARD=ruijie_rg-x60-new VERSION=SP1 SIMG=1
+```
+
+List available boards for a version:
+
+```bash
+make boards VERSION=2025
 ```
 
 - Version (default: 2025. Optional, for different versions of ATF and U-Boot)
@@ -96,15 +133,19 @@ Other options:
 | Option | type | required | default | description |
 | --- | --- | --- | --- | --- |
 | SOC | string | false | null | Auto detected, you can set SOC=mt7981, SOC=mt7986 or other mt798x platforms |
-| MULTI_LAYOUT | boolean | false | 0 | You can set MULTI_LAYOUT=1 to enable multi-layout support(Only for nand devices) |
+| MULTI_LAYOUT | boolean | false | 1 | You can set MULTI_LAYOUT=0 to disable multi-layout support(Only for nand devices) |
 | FIXED_MTDPARTS | boolean | false | 1 | You can set FIXED_MTDPARTS=0 to make mtdparts editable, but it may cause some issues if you don't know what you are doing, so it's default to 1 to use fixed mtdparts.(Only for nand devices) |
-| FSTHEME | string | false | new | You can set FSTHEME=new/gl/mtk to change the failsafe web UI theme, new/gl/mtk |
+| FSTHEME | string | false | bootstrap | You can set FSTHEME=bootstrap/gl/mtk to change the failsafe web UI theme, bootstrap/gl/mtk |
 | SIMG | boolean | false | null | SIMG=1 means enable single image upgrade support in the failsafe web UI, but it may cause some issues if you don't know what you are doing, so it's default to 0 to disable it. |
-| CLEAN | boolean | false | null | You can set CLEAN=1 to clean the build environment before build |
+| UBIMNG | boolean | false | 0 | UBIMNG=1 enables UBI volume management in the failsafe web UI. Requires MTD device with UBI support. |
+| TELNETD | boolean | false | 0 | TELNETD=1 enables the RFC 854 compliant telnet server in failsafe mode. Provides U-Boot CLI access over TCP port 23. |
+| CLEAN | boolean | false | null | Pass `--clean` to clean the build environment before build |
 
 > CAN'T ENABLE MULTI_LAYOUT=1 and FIXED_MTDPARTS=0 at the same time
 
 Generated files will be in the `output`
+
+For direct `*.sh` usage details, please see [`doc/tools.md`](./document/tools.md).
 
 ## Use Actions to build
 
@@ -112,7 +153,7 @@ You need folk this repository to your own account, and then you can use the Acti
 
 - [x] Build FIP
   - [x] single-board/all/all-mt798x
-  - [x] Version 2022/2023/2024/2025/2026/SP1/SP2/all
+  - [x] Version 2025/SP1/SP2/all
   - [ ] VARIANT
   - [ ] Extra Options
   > VERSION:all only for single-board
@@ -125,7 +166,7 @@ You need folk this repository to your own account, and then you can use the Acti
 
 > if you want to build old versions(<2025), you can checkout the "old-version" branch
 >
-> version 2026 need checkout the "mtksoc-20260123" branch
+> This branch only keeps 2025/SP1/SP2 support.
 
 ## Generate GPT with python2.7
 
@@ -138,15 +179,14 @@ sudo apt-get install python2 python2-dev
 > run
 
 ```bash
-chmod +x generate_gpt.sh
-./generate_gpt.sh
+make gpt
 ```
 
 Generated files will be in the `output_gpt`
 
 > You need to add your device's partition info JSON file in the "mt798x_gpt" directory, e.g. "atf-dir/tools/dev/gpt_editor/example/gpt.json".
 
-When you enable `SDMMC=1` (e.g. `SDMMC=1 ./generate_gpt.sh`), the generated GPT image will support MTK SDMMC.
+When you enable `SDMMC=1` (e.g. `make gpt SDMMC=1`), the generated GPT image will support MTK SDMMC.
 
 ### Show GPT info
 
@@ -155,7 +195,7 @@ Create a directory named `mt798x_gpt_bin` in the respository root directory, and
 Then run:
 
 ```bash
-SHOW=1 ./generate_gpt.sh
+make gpt SHOW=1
 ```
 
 Then it will display the GPT partition info of all GPT bin files in `mt798x_gpt_bin` directory, and output the results to `gpt_info.txt` in the `output_gpt` directory.
@@ -171,14 +211,13 @@ pip3 install Pillow
 Then run:
 
 ```bash
-DRAW=1 ./generate_gpt.sh
+make gpt DRAW=1
 ```
 
 ## Compile ATF
 
 ```bash
-chmod +x compile_atf.sh
-./compile_atf.sh
+make atf
 ```
 
 then will generate BL2 in the `output` directory. Normally, it will generate ramboot BL2.
@@ -238,14 +277,14 @@ There are two ways to build:
 - Local Build
 
   ```bash
-  BOARD=your_board VERSION=2025 VARIANT=ubootmod ./build.sh
+  make BOARD=your_board VERSION=2025 VARIANT=ubootmod
   ```
 
 - Use Action to build
 
 HOW to flash:
 
-1. Use failsafe WEB UI to backup[1*](#ENDNOTE) **all your flash and partitions**, is very **important**!
+1. Use failsafe WEB UI to backup[1*](#endnote) **all your flash and partitions**, is very **important**!
 
 2. Update BL2 in the WEB UI to flash the preloader provided by OpenWrt/ImmortalWrt ubootmod firmware.
 
@@ -253,7 +292,7 @@ HOW to flash:
 
 4. Use Flash Editor in the WEB UI to erase the UBI partition(or use command line: `mtd erase ubi`), this step is only for nand devices.
 
-5. Try upgrade in firmware upgrade page with the OpenWrt/ImmortalWrt ubootmod firmware[2*](#ENDNOTE) [3*](#ENDNOTE), if not work, try next step.
+5. Try upgrade in firmware upgrade page with the OpenWrt/ImmortalWrt ubootmod firmware[2*](#endnote) [3*](#endnote), if not work, try next step.
 
 6. Use failsafe WEB UI Initramfs to boot the OpenWrt/ImmortalWrt ubootmod Initramfs image.
 
@@ -265,7 +304,7 @@ HOW to flash:
 
 1. Use TTL tools to connect to the serial port, and use [MTK UARTBOOT](https://github.com/981213/mtk_uartboot/releases) to ramboot
 
-2. In Web UI, backup all your flash and partitions[1*](#ENDNOTE), is very important!
+2. In Web UI, backup all your flash and partitions[1*](#endnote), is very important!
 
 3. Update U-Boot in the WEB UI and upgrade firmware
 
@@ -326,9 +365,21 @@ fw_setenv failsafe 1 # Reboot to failsafe mode in next boot
 
 > need install `uboot-envtools` and configure `package/boot/uboot-envtools/files/mediatek_filogic` correctly for your device before compile firmware, otherwise the environment variables will not work.
 
----
+### Telnet support
 
-<a id="ENDNOTE"></a>
+You can connect to the device with telnet, default port is 23, and you can set the `telnet_port` environment variable to change the port.
+
+TelnetD is enabled by default, but you can set the `telnetd_enable` environment variable to 0/false/no/off to disable it.
+
+### Unified env-controlled NMBM enablement(Only for MTD devices)
+
+You can set `nmbm_enable` environment variable to 0/false/no/off to disable MTK-NMBM.
+
+> Only for MTD devices which enable MTK-NMBM configs before compile.
+
+More information about the NMBM enablement can be found in the [unified env-controlled NMBM enablement](./document/unified-env-controlled-NMBM-enablement.md) documentation.
+
+---
 
 ## Endnote
 
@@ -342,9 +393,9 @@ fw_setenv failsafe 1 # Reboot to failsafe mode in next boot
 
 ## Old Version ( < U-Boot 2025 )
 
-Now U-Boot 2022 and 2023 is **not maintained**(include Version2022/2023/2024).
+This branch only supports **2025/SP1/SP2**.
 
-**You can find old versions in the "old-version" branch, but they may have some issues, so it's recommended to use U-Boot 2025 for better experience.**
+**You can find old versions(such as 2022/2023/2024) in the "old-version" branch, but they may have some issues, so it's recommended to use current branch for better experience.**
 
 - <https://cmi.hanwckf.top/p/mt798x-uboot-usage>
 

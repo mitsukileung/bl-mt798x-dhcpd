@@ -78,7 +78,9 @@ enum mtk_tcp_state {
 /* Receive TCP packet */
 bool mtk_receive_tcp(struct ip_hdr *ip, int len, struct ethernet_hdr *et);
 
-/* Called periodically to check the TCP status & send packets */
-void mtk_tcp_periodic_check(void);
+/* Called periodically to check the TCP status & send packets.
+ * Returns 1 if all listeners and connections are done (can exit loop), 0 otherwise.
+ */
+int mtk_tcp_periodic_check(void);
 
 #endif /* __MTK_TCP_H__ */

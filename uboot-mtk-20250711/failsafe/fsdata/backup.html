@@ -5,10 +5,11 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>Backup</title>
-	<script src="/themeloader.js"></script>
+	<script src="/theme.js"></script>
 	<link rel="stylesheet" href="/style.css">
 	<script src="/i18n.js"></script>
 	<script src="/main.js"></script>
+	<script src="/backup_js.js"></script>
 </head>
 
 <body onload="appInit('backup')" data-page="backup">
@@ -17,6 +18,13 @@
 		<div class="main">
 			<div id="m">
 				<div class="card-head">
+					<div class="upload-hero" aria-hidden="true">
+						<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+							<polyline points="7 10 12 15 17 10"></polyline>
+							<line x1="12" y1="15" x2="12" y2="3"></line>
+						</svg>
+					</div>
 					<h1 data-i18n="backup.title">BACKUP</h1>
 					<p id="hint" data-i18n-html="backup.hint">
 						Download a backup from device storage as a <strong>binary file</strong>.<br>

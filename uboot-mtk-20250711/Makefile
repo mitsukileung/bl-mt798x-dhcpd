@@ -264,6 +264,9 @@ VPATH		:= $(srctree)
 
 export srctree objtree VPATH
 
+# Get SUBLEVEL by commit count
+SUBLEVEL = $(shell git -C $(srctree)/.. rev-list --count --first-parent HEAD 2>/dev/null || echo 0)
+
 # To make sure we do not include .config for any of the *config targets
 # catch them early, and hand them over to scripts/kconfig/Makefile
 # It is allowed to specify more targets when calling make, including

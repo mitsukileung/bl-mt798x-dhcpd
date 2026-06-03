@@ -14,6 +14,7 @@
 #include <net/mtk_tcp.h>
 #include <net/mtk_httpd.h>
 #include <vsprintf.h>
+#include <log.h>
 #include <asm/global_data.h>
 
 DECLARE_GLOBAL_DATA_PTR;
@@ -278,6 +279,13 @@ u32 http_make_response_header(struct http_response_info *info, char *buff,
 	if (p >= buff + size)
 		return size;
 
+	if (info->content_encoding)
+		p += snprintf(p, buff + size - p, "Content-Encoding: %s\r\n",
+			      info->content_encoding);
+
+	if (p >= buff + size)
+		return size;
+
 	if (info->content_length >= 0)
 		p += snprintf(p, buff + size - p, "Content-Length: %d\r\n",
 			      info->content_length);
@@ -408,7 +416,7 @@ static int httpd_recv_hdr(struct httpd_instance *inst,
 
 	/* Reduce console noise for high-frequency polling endpoints */
 	if (strcmp(uri_ptr, "/console/poll"))
-		printf("%s %s\n", pdata->buf, uri_ptr);
+		debug("%s %s\n", pdata->buf, uri_ptr);
 
 	/* record URI */
 	pdata->uri = uri_ptr;
@@ -423,7 +431,7 @@ static int httpd_recv_hdr(struct httpd_instance *inst,
 				cl_ptr++;
 			pdata->payload_size = simple_strtoul(cl_ptr, NULL, 10);
 			if (strcmp(uri_ptr, "/console/poll"))
-				printf("    Content-Length: %d\n", pdata->payload_size);
+				debug("    Content-Length: %d\n", pdata->payload_size);
 		}
 
 		/* Content-Type */

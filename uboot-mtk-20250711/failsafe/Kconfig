@@ -12,12 +12,12 @@ config WEBUI_FAILSAFE
 
 choice
 	prompt "Failsafe Web UI style"
-	default WEBUI_FAILSAFE_UI_NEW
+	default WEBUI_FAILSAFE_UI_BOOTSTRAP
 	depends on WEBUI_FAILSAFE
 	help
 	  Select which UI resources to embed for failsafe Web UI.
 
-config WEBUI_FAILSAFE_UI_NEW
+config WEBUI_FAILSAFE_UI_BOOTSTRAP
 	bool "New UI (fsdata)"
 
 config WEBUI_FAILSAFE_UI_MTK
@@ -31,7 +31,7 @@ endchoice
 config WEBUI_FAILSAFE_I18N
 	bool "Enable i18n dictionary (fsdata)"
 	default y
-	depends on WEBUI_FAILSAFE_UI_NEW
+	depends on WEBUI_FAILSAFE_UI_BOOTSTRAP
 	help
 	  Enable i18n dictionary resources for the new failsafe Web UI.
 	  When disabled, i18n.js will not be embedded or served.
@@ -83,6 +83,16 @@ config WEBUI_FAILSAFE_FLASH
 
 	  WARNING: This is a dangerous feature and may brick the device.
 
+config WEBUI_FAILSAFE_GPT
+	bool "Enable GPT partition table update"
+	default y if MTK_BOOTMENU_MMC
+	depends on WEBUI_FAILSAFE && MTK_BOOTMENU_MMC
+	help
+	  Enable GPT partition table update in the failsafe Web UI.
+	  This allows update of the GPT partition table from a file upload.
+
+	  WARNING: This is a dangerous feature and may brick the device.
+
 config WEBUI_FAILSAFE_ENV
 	bool "Enable U-Boot environment management (DANGEROUS)"
 	default y
@@ -120,6 +130,15 @@ config WEBUI_FAILSAFE_ENV_DEFAULT_GLBTN_KEY
 	  When enabled, failsafe environment API will automatically create
 	  and persist glbtn_key=reset,wps,mesh if glbtn_key does not exist.
 	  Existing glbtn_key values are never overwritten.
+
+config WEBUI_FAILSAFE_UBI
+	bool "Enable UBI volume management"
+	default n
+	select CMD_UBIFS
+	depends on WEBUI_FAILSAFE_ADVANCED && !MTK_BOOTMENU_MMC
+	help
+	  Enable UBI volume management in the failsafe Web UI.
+	  This allows managing UBI volumes on NAND flash devices.
 
 config WEBUI_FAILSAFE_CONSOLE
 	bool "Enable failsafe Web console (DANGEROUS)"

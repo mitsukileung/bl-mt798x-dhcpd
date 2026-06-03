@@ -460,8 +460,13 @@ int net_loop(enum proto_t protocol)
 	debug_cond(DEBUG_INT_STATE, "--- net_loop Entry\n");
 
 #ifdef CONFIG_NET_FORCE_IPADDR
-	net_ip = string_to_ip(CONFIG_IPADDR);
-	net_netmask = string_to_ip(CONFIG_NETMASK);
+	{
+		const char *env_ip = env_get("ipaddr");
+		const char *env_nm = env_get("netmask");
+
+		net_ip = string_to_ip((env_ip && env_ip[0]) ? env_ip : CONFIG_IPADDR);
+		net_netmask = string_to_ip((env_nm && env_nm[0]) ? env_nm : CONFIG_NETMASK);
+	}
 #endif
 
 #ifdef CONFIG_PHY_NCSI
@@ -687,8 +692,15 @@ restart:
 		eth_rx();
 
 #if defined(CONFIG_MTK_TCP)
-		if (protocol == MTK_TCP)
-			mtk_tcp_periodic_check();
+		/*
+		 * Always run mtk_tcp_periodic_check() so that existing
+		 * MTK TCP connections (httpd, telnetd) stay alive even
+		 * while another network command (tftpboot, ping, …) is
+		 * using net_loop().  Only terminate the loop when we are
+		 * actually serving MTK_TCP and all listeners are gone.
+		 */
+		if (mtk_tcp_periodic_check() && protocol == MTK_TCP)
+			net_set_state(NETLOOP_SUCCESS);
 #endif
 
 #if defined(CONFIG_PROT_TCP)

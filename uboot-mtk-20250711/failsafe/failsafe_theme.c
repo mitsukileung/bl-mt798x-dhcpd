@@ -23,19 +23,11 @@
 
 #define THEME_COLOR_ENV "failsafe_theme_color"
 #define THEME_COLOR_MAX_LEN 8
+#define THEME_COLOR_RAINBOW "rainbow"
 #define THEME_MODE_ENV "failsafe_theme_mode"
 #define THEME_MODE_MAX_LEN 8
-
-static void failsafe_http_reply_json(struct httpd_response *response, int code,
-	const char *json)
-{
-	response->status = HTTP_RESP_STD;
-	response->data = json ? json : "{}";
-	response->size = strlen(response->data);
-	response->info.code = code;
-	response->info.connection_close = 1;
-	response->info.content_type = "application/json";
-}
+#define THEME_DARK_VARIANT_ENV "failsafe_theme_dark_variant"
+#define THEME_DARK_VARIANT_MAX_LEN 12
 
 static int failsafe_theme_normalize_hex(const char *in, char *out, size_t out_sz)
 {
@@ -81,55 +73,19 @@ static int failsafe_theme_normalize_hex(const char *in, char *out, size_t out_sz
 	return 0;
 }
 
-static int theme_get_form_value(struct httpd_request *request,
-	const char *key, char **out, size_t max_len, bool allow_empty,
-	bool allow_missing)
-{
-	struct httpd_form_value *v;
-	char *buf;
-	size_t n;
-
-	if (!request || !key || !out)
-		return -EINVAL;
-
-	v = httpd_request_find_value(request, key);
-	if (!v || !v->data) {
-		if (allow_missing) {
-			*out = NULL;
-			return 0;
-		}
-		if (allow_empty) {
-			buf = strdup("");
-			if (!buf)
-				return -ENOMEM;
-			*out = buf;
-			return 0;
-		}
-		return -EINVAL;
-	}
-
-	n = v->size;
-	if (!allow_empty && !n)
-		return -EINVAL;
-	if (n > max_len)
-		return -E2BIG;
-
-	buf = malloc(n + 1);
-	if (!buf)
-		return -ENOMEM;
-
-	memcpy(buf, v->data, n);
-	buf[n] = '\0';
-	*out = buf;
-	return 0;
-}
-
 static bool failsafe_theme_valid_mode(const char *mode)
 {
 	if (!mode || !mode[0])
 		return false;
 	return !strcmp(mode, "auto") || !strcmp(mode, "light") ||
 		!strcmp(mode, "dark");
+}
+
+static bool failsafe_theme_valid_dark_variant(const char *variant)
+{
+	if (!variant || !variant[0])
+		return false;
+	return !strcmp(variant, "standard") || !strcmp(variant, "amoled");
 }
 
 static const char *failsafe_guess_content_type(const char *path)
@@ -170,10 +126,13 @@ static int output_binary_file(struct httpd_response *response,
 	if (file) {
 		response->data = file->data;
 		response->size = file->size;
+		/* embedded binary assets are gzip-compressed at build time */
+		response->info.content_encoding = "gzip";
 	} else {
 		response->data = "Not Found";
 		response->size = strlen(response->data);
 		response->info.code = 404;
+		response->info.content_encoding = NULL;
 		ret = 1;
 	}
 
@@ -225,8 +184,9 @@ void theme_get_handler(enum httpd_uri_handler_status status,
 {
 	const char *val;
 	const char *theme;
+	const char *dark_variant;
 	char color[THEME_COLOR_MAX_LEN] = "";
-	static char resp[96];
+	static char resp[160];
 
 	if (status != HTTP_CB_NEW)
 		return;
@@ -238,16 +198,23 @@ void theme_get_handler(enum httpd_uri_handler_status status,
 	}
 
 	val = env_get(THEME_COLOR_ENV);
-	if (!val || failsafe_theme_normalize_hex(val, color, sizeof(color)))
+	if (val && !strcmp(val, THEME_COLOR_RAINBOW)) {
+		strlcpy(color, THEME_COLOR_RAINBOW, sizeof(color));
+	} else if (!val || failsafe_theme_normalize_hex(val, color, sizeof(color))) {
 		color[0] = '\0';
+	}
 
 	theme = env_get(THEME_MODE_ENV);
 	if (!failsafe_theme_valid_mode(theme))
 		theme = "";
 
+	dark_variant = env_get(THEME_DARK_VARIANT_ENV);
+	if (!failsafe_theme_valid_dark_variant(dark_variant))
+		dark_variant = "";
+
 	snprintf(resp, sizeof(resp),
-		"{\"ok\":true,\"color\":\"%s\",\"theme\":\"%s\"}",
-		color, theme ? theme : "");
+		"{\"ok\":true,\"color\":\"%s\",\"theme\":\"%s\",\"dark_variant\":\"%s\"}",
+		color, theme ? theme : "", dark_variant ? dark_variant : "");
 
 	failsafe_http_reply_json(response, 200, resp);
 }
@@ -258,6 +225,7 @@ void theme_set_handler(enum httpd_uri_handler_status status,
 {
 	char *color = NULL;
 	char *theme = NULL;
+	char *dark_variant = NULL;
 	char norm[THEME_COLOR_MAX_LEN];
 	int ret;
 	bool changed = false;
@@ -272,7 +240,7 @@ void theme_set_handler(enum httpd_uri_handler_status status,
 		return;
 	}
 
-	ret = theme_get_form_value(request, "color", &color,
+	ret = failsafe_get_form_value(request, "color", &color,
 		THEME_COLOR_MAX_LEN, true, true);
 	if (ret) {
 		failsafe_http_reply_json(response, 400,
@@ -280,7 +248,7 @@ void theme_set_handler(enum httpd_uri_handler_status status,
 		return;
 	}
 
-	ret = theme_get_form_value(request, "theme", &theme,
+	ret = failsafe_get_form_value(request, "theme", &theme,
 		THEME_MODE_MAX_LEN, true, true);
 	if (ret) {
 		free(color);
@@ -289,9 +257,24 @@ void theme_set_handler(enum httpd_uri_handler_status status,
 		return;
 	}
 
+	ret = failsafe_get_form_value(request, "dark_variant", &dark_variant,
+		THEME_DARK_VARIANT_MAX_LEN, true, true);
+	if (ret) {
+		free(color);
+		free(theme);
+		failsafe_http_reply_json(response, 400,
+			"{\"ok\":false,\"error\":\"bad_dark_variant\"}");
+		return;
+	}
+
 	if (color) {
 		if (!color[0]) {
 			ret = env_set(THEME_COLOR_ENV, NULL);
+			if (ret)
+				goto out_free;
+			changed = true;
+		} else if (!strcmp(color, THEME_COLOR_RAINBOW)) {
+			ret = env_set(THEME_COLOR_ENV, THEME_COLOR_RAINBOW);
 			if (ret)
 				goto out_free;
 			changed = true;
@@ -327,6 +310,27 @@ void theme_set_handler(enum httpd_uri_handler_status status,
 		}
 	}
 
+	if (dark_variant) {
+		/* "standard" is the implicit default — store as unset so the
+		 * env stays clean and `printenv` doesn't show a redundant key */
+		if (!dark_variant[0] || !strcmp(dark_variant, "standard")) {
+			ret = env_set(THEME_DARK_VARIANT_ENV, NULL);
+			if (ret)
+				goto out_free;
+			changed = true;
+		} else {
+			if (!failsafe_theme_valid_dark_variant(dark_variant)) {
+				ret = -EINVAL;
+				err = "bad_dark_variant";
+				goto out_free;
+			}
+			ret = env_set(THEME_DARK_VARIANT_ENV, dark_variant);
+			if (ret)
+				goto out_free;
+			changed = true;
+		}
+	}
+
 	if (changed) {
 		ret = env_save();
 		if (ret)
@@ -335,17 +339,24 @@ void theme_set_handler(enum httpd_uri_handler_status status,
 
 	free(color);
 	free(theme);
+	free(dark_variant);
 	failsafe_http_reply_json(response, 200, "{\"ok\":true}");
 	return;
 
 out_free:
 	free(color);
 	free(theme);
+	free(dark_variant);
 	if (ret == -EINVAL) {
-		failsafe_http_reply_json(response, 400,
-			err && !strcmp(err, "bad_color") ?
-			"{\"ok\":false,\"error\":\"bad_color\"}" :
-			"{\"ok\":false,\"error\":\"bad_theme\"}");
+		if (err && !strcmp(err, "bad_color"))
+			failsafe_http_reply_json(response, 400,
+				"{\"ok\":false,\"error\":\"bad_color\"}");
+		else if (err && !strcmp(err, "bad_dark_variant"))
+			failsafe_http_reply_json(response, 400,
+				"{\"ok\":false,\"error\":\"bad_dark_variant\"}");
+		else
+			failsafe_http_reply_json(response, 400,
+				"{\"ok\":false,\"error\":\"bad_theme\"}");
 	}
 	else
 		failsafe_http_reply_json(response, 500,

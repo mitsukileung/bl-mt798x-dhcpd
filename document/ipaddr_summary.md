@@ -1,6 +1,6 @@
 # MT798 IP Address Summary
 
-Generated: 2026-05-16 10:37:36
+Generated: 2026-05-22 16:31:58
 
 This document lists mt798* defconfigs whose `CONFIG_IPADDR` value is not `192.168.1.1`.
 
@@ -8,7 +8,8 @@ This document lists mt798* defconfigs whose `CONFIG_IPADDR` value is not `192.16
 
 | Filename | Model | IPADDR | USE_IPADDR | NET_FORCE_IPADDR |
 |---|---|---|---|---|
-| _default-only configs omitted_ | 56 file(s) use `192.168.1.1` | - | - | - |
+| _default-only configs omitted_ | 57 file(s) use `192.168.1.1` | - | - | - |
+| `mt7981_bt_r320_defconfig` | bt_r320 | 192.168.8.1 | y | y |
 | `mt7981_ruijie_rg-x30e-pro_defconfig` | ruijie_rg-x30e-pro | 192.168.110.1 | y | y |
 | `mt7981_ruijie_rg-x30e-pro_multi_layout_defconfig` | ruijie_rg-x30e-pro_multi_layout | 192.168.110.1 | y | y |
 | `mt7981_ruijie_rg-x30e_defconfig` | ruijie_rg-x30e | 192.168.110.1 | y | y |
@@ -30,44 +31,9 @@ This document lists mt798* defconfigs whose `CONFIG_IPADDR` value is not `192.16
 
 ## MT7987 Platform
 
-All 11 configuration files use the default `CONFIG_IPADDR=192.168.1.1`.
-
-| Filename | Model | IPADDR | USE_IPADDR | NET_FORCE_IPADDR |
-|---|---|---|---|---|
-| `mt7987_airpi_e87n_defconfig` | airpi_e87n | 192.168.1.1 | y | - |
-| `mt7987_airpi_h5000m_defconfig` | airpi_h5000m | 192.168.1.1 | y | - |
-| `mt7987_emmc_rfb_defconfig` | emmc_rfb | 192.168.1.1 | y | - |
-| `mt7987_mangopi_m87k_defconfig` | mangopi_m87k | 192.168.1.1 | y | - |
-| `mt7987_nor_emmc_rfb_defconfig` | nor_emmc_rfb | 192.168.1.1 | y | - |
-| `mt7987_rfb_defconfig` | rfb | 192.168.1.1 | y | - |
-| `mt7987_sd_rfb_defconfig` | sd_rfb | 192.168.1.1 | y | - |
-| `mt7987_spim_nand_nmbm_rfb_defconfig` | spim_nand_nmbm_rfb | 192.168.1.1 | y | - |
-| `mt7987_spim_nand_rfb_defconfig` | spim_nand_rfb | 192.168.1.1 | y | - |
-| `mt7987_spim_nand_ubi_rfb_defconfig` | spim_nand_ubi_rfb | 192.168.1.1 | y | - |
-| `mt7987_spim_nor_rfb_defconfig` | spim_nor_rfb | 192.168.1.1 | y | - |
+All 12 configuration files use the default `CONFIG_IPADDR=192.168.1.1` (12 file(s)).
 
 ## MT7988 Platform
 
-All 18 configuration files use the default `CONFIG_IPADDR=192.168.1.1`.
-
-| Filename | Model | IPADDR | USE_IPADDR | NET_FORCE_IPADDR |
-|---|---|---|---|---|
-| `mt7988_10g_p0_spim_nand_rfb_defconfig` | 10g_p0_spim_nand_rfb | 192.168.1.1 | y | - |
-| `mt7988_10g_p1_spim_nand_rfb_defconfig` | 10g_p1_spim_nand_rfb | 192.168.1.1 | y | - |
-| `mt7988_emmc_rfb_defconfig` | emmc_rfb | 192.168.1.1 | y | - |
-| `mt7988_emmc_sb_rfb_defconfig` | emmc_sb_rfb | 192.168.1.1 | y | - |
-| `mt7988_i2p5g_p1_emmc_rfb_defconfig` | i2p5g_p1_emmc_rfb | 192.168.1.1 | y | - |
-| `mt7988_i2p5g_p1_spim_nand_rfb_defconfig` | i2p5g_p1_spim_nand_rfb | 192.168.1.1 | y | - |
-| `mt7988_nor_emmc_rfb_defconfig` | nor_emmc_rfb | 192.168.1.1 | y | - |
-| `mt7988_rfb_defconfig` | rfb | 192.168.1.1 | y | - |
-| `mt7988_sd_rfb_defconfig` | sd_rfb | 192.168.1.1 | y | - |
-| `mt7988_snfi_nand_nmbm_rfb_defconfig` | snfi_nand_nmbm_rfb | 192.168.1.1 | y | - |
-| `mt7988_snfi_nand_rfb_defconfig` | snfi_nand_rfb | 192.168.1.1 | y | - |
-| `mt7988_spim_nand_an8831x_rfb_defconfig` | spim_nand_an8831x_rfb | 192.168.1.1 | y | - |
-| `mt7988_spim_nand_nmbm_an8831x_rfb_defconfig` | spim_nand_nmbm_an8831x_rfb | 192.168.1.1 | y | - |
-| `mt7988_spim_nand_nmbm_rfb_defconfig` | spim_nand_nmbm_rfb | 192.168.1.1 | y | - |
-| `mt7988_spim_nand_rfb_defconfig` | spim_nand_rfb | 192.168.1.1 | y | - |
-| `mt7988_spim_nand_sb_rfb_defconfig` | spim_nand_sb_rfb | 192.168.1.1 | y | - |
-| `mt7988_spim_nand_ubi_rfb_defconfig` | spim_nand_ubi_rfb | 192.168.1.1 | y | - |
-| `mt7988_spim_nor_rfb_defconfig` | spim_nor_rfb | 192.168.1.1 | y | - |
+All 18 configuration files use the default `CONFIG_IPADDR=192.168.1.1` (18 file(s)).
 

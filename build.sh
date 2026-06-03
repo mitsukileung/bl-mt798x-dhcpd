@@ -5,65 +5,62 @@ AUTHOR="Yuzhii"
 TOOLCHAIN_ARM=arm-linux-gnueabi-
 TOOLCHAIN_AARCH64=aarch64-linux-gnu-
 
+# ATF directory and uboot directory names
+ATF24=atf-20240117-bacca82a8
+ATF25=atf-20250711
+ATF26=atf-20260123
+UBOOT25=uboot-mtk-20250711
+
 # Default selection
 VERSION=${VERSION:-2025}
 VARIANT=${VARIANT:-default}
-FSTHEME=${FSTHEME:-new}
+FSTHEME=${FSTHEME:-bootstrap}
 fixedparts=${FIXED_MTDPARTS:-1}
 multilayout=${MULTI_LAYOUT:-0}
 simg=${SIMG:-0}
+UBIMNG=${UBIMNG:-0}
+TELNETD=${TELNETD:-0}
+COPY_BL2=${COPY_BL2:-1}
+clean_mode=0
 
-if [ "$VERSION" = "2022" ]; then
-    UBOOT_DIR=uboot-mtk-20220606
-    ATF_DIR=atf-20220606-637ba581b
-elif [ "$VERSION" = "2023" ]; then
-    UBOOT_DIR=uboot-mtk-20230718-09eda825
-    ATF_DIR=atf-20231013-0ea67d76a
-elif [ "$VERSION" = "2024" ]; then
-    UBOOT_DIR=uboot-mtk-20230718-09eda825
-    ATF_DIR=atf-20240117-bacca82a8
-elif [ "$VERSION" = "2025" ]; then
-    UBOOT_DIR=uboot-mtk-20250711
-    ATF_DIR=atf-20250711
-elif [ "$VERSION" = "2026" ]; then
-    UBOOT_DIR=uboot-mtk-20260123
-    ATF_DIR=atf-20260123
+if [ "${1:-}" = "--clean" ] || [ "${1:-}" = "-c" ]; then
+	clean_mode=1
+fi
+
+if [ "$VERSION" = "2025" ]; then
+    UBOOT_DIR=$UBOOT25
+    ATF_DIR=$ATF25
 elif [ "$VERSION" = "SP1" ] || [ "$VERSION" = "sp1" ]; then
 	VERSION="SP1"
-    UBOOT_DIR=uboot-mtk-20250711
-    ATF_DIR=atf-20240117-bacca82a8
+    UBOOT_DIR=$UBOOT25
+    ATF_DIR=$ATF24
 elif [ "$VERSION" = "SP2" ] || [ "$VERSION" = "sp2" ]; then
 	VERSION="SP2"
-    UBOOT_DIR=uboot-mtk-20250711
-    ATF_DIR=atf-20260123
+    UBOOT_DIR=$UBOOT25
+    ATF_DIR=$ATF26
 else
-    echo "Error: Unsupported VERSION. Please specify VERSION=2025/SP1/SP2."
+	echo "Error: Unsupported VERSION. Please specify VERSION=2025/SP1/SP2."
     exit 1
 fi
 
-if [ "$CLEAN" = "1" ]; then
-	if [ -f "$UBOOT_DIR/.config" ]; then
-		echo "Cleaning $UBOOT_DIR"
-		cd "$UBOOT_DIR"
-		make distclean
-		cd ..
-	else
-		echo "$UBOOT_DIR/.config does not exist."
-	fi
-    if [ -d "$ATF_DIR/build" ]; then
-		echo "Cleaning $ATF_DIR" 
-		cd "$ATF_DIR"
-		make distclean
-		cd ..
-    else
-        echo "$ATF_DIR/build does not exist."
-    fi
+if [ "$clean_mode" = "1" ]; then
+	for dir in "$UBOOT_DIR" "$ATF24" "$ATF25" "$ATF26"; do
+		if [ -d "$dir" ]; then
+			echo "Cleaning $dir"
+			(
+				cd "$dir" && make distclean
+			)
+		else
+			echo "$dir does not exist."
+		fi
+	done
+
 	echo "Clean done."
     exit 0
 fi
 
 if [ -z "$BOARD" ]; then
-	echo "Usage: BOARD=<board name> [SOC=mt7981|mt7986|mt7987|mt7988] VERSION=[2022|2023|2024|2025] VARIANT=[default|ubootmod|nonmbm] $0"
+	echo "Usage: BOARD=<board name> [SOC=mt7981|mt7986|mt7987|mt7988] VERSION=[2025|SP1|SP2] VARIANT=[default|ubootmod|nonmbm] [UBIMNG=1] [TELNETD=1] $0"
 	echo "eg: BOARD=cmcc_a10 $0"
 	echo "eg: BOARD=cmcc_a10 VARIANT=ubootmod $0"
 	echo "eg: BOARD=sn_r1 VERSION=2025 $0"
@@ -133,6 +130,35 @@ fi
 echo "======================================================================"
 echo "Checking environment..."
 echo "======================================================================"
+
+echo "Trying npm..."
+command -v npm
+[ "$?" != "0" ] && { echo "Error: npm is not installed on this system."; exit 0; }
+
+ensure_failsafe_js_deps() {
+	failsafe_dir="$UBOOT_DIR/failsafe"
+	package_json="$failsafe_dir/package.json"
+	marker="$failsafe_dir/.npm-install-done"
+
+	if [ ! -f "$package_json" ]; then
+		echo "Skipping failsafe JS dependency setup: $package_json not found."
+		return 0
+	fi
+
+	if [ -f "$marker" ] && [ -d "$failsafe_dir/node_modules/uglify-js" ]; then
+		echo "Failsafe JS build dependencies already installed."
+		return 0
+	fi
+
+	command -v npm >/dev/null 2>&1 || { echo "Error: npm is not installed on this system."; exit 1; }
+	echo "Installing failsafe JS build dependencies..."
+	(cd "$failsafe_dir" && npm install --no-audit --no-fund) || exit 1
+	touch "$marker"
+	echo "Failsafe JS build dependencies installed."
+}
+
+echo "npm found, checking failsafe JS dependencies..."
+ensure_failsafe_js_deps
 
 echo "Trying python3..."
 command -v python3
@@ -276,7 +302,8 @@ echo "U-Boot Dir: $UBOOT_DIR"
 echo "ATF CFG: $ATF_CFG_PATH"
 echo "U-Boot CFG: $UBOOT_CFG_PATH"
 echo "Features: fixed-mtdparts: $fixedparts, multi-layout: $multilayout"
-echo "Failsafe: theme: $FSTHEME, simg support: $simg"
+echo "Failsafe: theme: $FSTHEME, simg support: $simg, ubi manger support: $UBIMNG, telnetd: $TELNETD"
+echo "COPY BL2: $COPY_BL2"
 
 echo "======================================================================"
 echo "Build u-boot..."
@@ -293,8 +320,8 @@ if [ -n "$VARIANT" ]; then
 	echo "Build u-boot with variant: $VARIANT"
 	echo "CONFIG_WEBUI_FAILSAFE_BUILD_VARIANT=\"$(echo "$VARIANT" | tr '[:upper:]' '[:lower:]')\"" >> "$UBOOT_DIR/.config"
 fi
-if [ "$FSTHEME" = "new" ] || [ "$FSTHEME" = "NEW" ]; then
-	echo "Build u-boot with new fstheme!"
+if [ "$FSTHEME" = "bootstrap" ] || [ "$FSTHEME" = "Bootstrap" ]; then
+	echo "Build u-boot with bootstrap fstheme!"
 fi
 if [ "$FSTHEME" = "gl" ] || [ "$FSTHEME" = "GL" ]; then
 	echo "Build u-boot with gl fstheme!"
@@ -307,6 +334,14 @@ fi
 if [ "$simg" = "1" ]; then
 	echo "Build u-boot with failsafe simg support!"
 	echo "CONFIG_WEBUI_FAILSAFE_SIMG=y" >> "$UBOOT_DIR/.config"
+fi
+if [ "$UBIMNG" = "1" ]; then
+	echo "Build u-boot with failsafe UBI management support!"
+	echo "CONFIG_WEBUI_FAILSAFE_UBI=y" >> "$UBOOT_DIR/.config"
+fi
+if [ "$TELNETD" = "1" ]; then
+	echo "Build u-boot with telnetd support!"
+	echo "CONFIG_MTK_TELNETD=y" >> "$UBOOT_DIR/.config"
 fi
 
 make -C "$UBOOT_DIR" olddefconfig
@@ -371,9 +406,9 @@ if [ -f "$ATF_DIR/build/${SOC}/release/fip.bin" ]; then
 	fi
 	FIP_MD5=$(md5sum "$ATF_DIR/build/${SOC}/release/fip.bin" | awk '{print $1}')
 	FIP_NAME="${FIP_NAME}_md5-${FIP_MD5}"
+	echo "fip-${SOC}_${BOARD}_${VERSION}_${VARIANT} build done"
 	echo "fip.bin md5sum: $FIP_MD5"
 	cp -f "$ATF_DIR/build/${SOC}/release/fip.bin" "output/${FIP_NAME}.bin"
-	echo "fip-${SOC}_${BOARD}_${VERSION}_${VARIANT} build done"
 	echo "Output: output/${FIP_NAME}.bin"
 else
 	echo "fip build fail!"
@@ -393,10 +428,15 @@ if grep -Eq "(^_|CONFIG_TARGET_ALL_NO_SEC_BOOT=y)" "$ATF_CFG_PATH"; then
 		fi
 		BL2_MD5=$(md5sum "$ATF_DIR/build/${SOC}/release/bl2.img" | awk '{print $1}')
 		BL2_NAME="${BL2_NAME}_md5-${BL2_MD5}"
-		echo "bl2.img md5sum: $BL2_MD5"
-		cp -f "$ATF_DIR/build/${SOC}/release/bl2.img" "output/${BL2_NAME}.img"
 		echo "bl2-${SOC}_${BOARD}_${VERSION}_${VARIANT} build done"
-		echo "Output: output/${BL2_NAME}.img"
+		echo "bl2.img md5sum: $BL2_MD5"
+		if [ "$COPY_BL2" = "1" ]; then
+			cp -f "$ATF_DIR/build/${SOC}/release/bl2.img" "output/${BL2_NAME}.img"
+			echo "Output: output/${BL2_NAME}.img"
+		else
+			echo "Skipping bl2 copy because COPY_BL2 is disabled"
+			echo "You may find the bl2 image at: $ATF_DIR/build/${SOC}/release/bl2.img"
+		fi
 	else
 		echo "bl2 build fail!"
 		exit 1
