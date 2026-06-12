@@ -65,7 +65,13 @@ config VARIANT_UBOOTMOD
 	bool "ubootmod"
 	help
 	  With some modifications for better compatibility with OpenWrt/ImmortalWrt
-	  firmware(For MTD devices), suitable for ubi/ubootmod layout firmware.
+	  firmware(For MTD devices), suitable for ubootmod layout firmware.
+
+config VARIANT_UBI
+	bool "ubi"
+	help
+	  With some modifications for better compatibility with OpenWrt/ImmortalWrt
+	  firmware(For MTD devices), suitable for ubi layout firmware.
 
 config VARIANT_OPENWRT
 	bool "openwrt"

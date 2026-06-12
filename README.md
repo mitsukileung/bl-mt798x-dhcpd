@@ -124,6 +124,7 @@ make boards VERSION=2025
 | default | Recommand for devices with stock/custom partition layout, enable MTK-NMBM, suitable for most users | stock/custom layout firmware |
 | nonmbm | Recommand for devices with stock/custom partition layout, with MTK-NMBM disabled | stock/custom layout firmware without MTK-NMBM |
 | ubootmod | With some modifications for better compatibility with OpenWrt/ImmortalWrt firmware | ubi/ubootmod layout firmware |
+| ubi | Designed for UBI layout(such as: `spi-nand0:1024k(bl2),-(ubi)`) | ubi layout firmware |
 | openwrt | From OpenWrt official respository, it has no failsafe web UI temporarily | OpenWrt official firmware |
 
 ---

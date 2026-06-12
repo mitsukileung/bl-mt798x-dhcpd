@@ -34,6 +34,8 @@ endif
 ifeq ($(origin VARIANT), undefined)
   ifeq ($(strip $(CONFIG_VARIANT_UBOOTMOD)),y)
     VARIANT := ubootmod
+  else ifeq ($(strip $(CONFIG_VARIANT_UBI)),y)
+	VARIANT := ubi
   else ifeq ($(strip $(CONFIG_VARIANT_NONMBM)),y)
     VARIANT := nonmbm
   else ifeq ($(strip $(CONFIG_VARIANT_OPENWRT)),y)
@@ -78,7 +80,7 @@ ifeq ($(origin BOARDS), undefined)
     EVAL_BOARDS := 1
   else
     EVAL_BOARDS := 1
-		BOARDS := $(shell if [ -f '$(CONFIG_FILE)' ] && [ -n '$(BOARD_ATF_CFG_DIR)' ] && [ -n '$(BOARD_UBOOT_CFG_DIR)' ]; then atf_list=$$(mktemp); uboot_list=$$(mktemp); find -L '$(BOARD_ATF_CFG_DIR)/configs' -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n' | sed 's/_defconfig$$//' | sort -u > "$$atf_list"; find -L '$(BOARD_UBOOT_CFG_DIR)/configs' -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n' | sed 's/_defconfig$$//' | sort -u > "$$uboot_list"; all_cfgs=$$(comm -12 "$$atf_list" "$$uboot_list"); rm -f "$$atf_list" "$$uboot_list"; selected_boards=$$(grep '^CONFIG_BOARD_[A-Z0-9_]*=y$$' '$(CONFIG_FILE)' | sed 's/^CONFIG_BOARD_//; s/=y$$//' | tr '[:upper:]' '[:lower:]'); selected_platforms=$$(grep '^CONFIG_BUILD_ALL_[A-Z0-9_]*=y$$' '$(CONFIG_FILE)' | sed 's/^CONFIG_BUILD_ALL_//; s/=y$$//' | tr '[:upper:]' '[:lower:]'); for cfg in $$all_cfgs; do cfg_norm=$$(printf '%s\n' "$$cfg" | tr '-' '_'); include=0; for sel in $$selected_boards; do [ "$$sel" = "$$cfg_norm" ] && include=1 && break; done; if [ "$$include" -eq 0 ]; then for plat in $$selected_platforms; do prefix="$${plat}_"; if [ "$$cfg_norm" != "$${cfg_norm#$$prefix}" ]; then include=1; break; fi; done; fi; [ "$$include" -eq 1 ] && printf '%s\n' "$$cfg" | sed 's/^[^_]*_//'; done | sort -u; fi)
+		BOARDS := $(shell if [ -f '$(CONFIG_FILE)' ] && [ -n '$(BOARD_ATF_CFG_DIR)' ] && [ -n '$(BOARD_UBOOT_CFG_DIR)' ]; then if grep -q '^CONFIG_VARIANT_UBI=y$$' '$(CONFIG_FILE)'; then atf_d='$(BOARD_ATF_CFG_DIR)/configs-ubi'; uboot_d='$(BOARD_UBOOT_CFG_DIR)/configs-ubi'; elif grep -q '^CONFIG_VARIANT_UBOOTMOD=y$$' '$(CONFIG_FILE)'; then atf_d='$(BOARD_ATF_CFG_DIR)/configs-ubi'; uboot_d='$(BOARD_UBOOT_CFG_DIR)/configs-fit'; elif grep -q '^CONFIG_VARIANT_NONMBM=y$$' '$(CONFIG_FILE)'; then atf_d='$(BOARD_ATF_CFG_DIR)/configs-nonmbm'; uboot_d='$(BOARD_UBOOT_CFG_DIR)/configs-nonmbm'; elif grep -q '^CONFIG_VARIANT_OPENWRT=y$$' '$(CONFIG_FILE)'; then atf_d='$(BOARD_ATF_CFG_DIR)/configs'; uboot_d='$(BOARD_UBOOT_CFG_DIR)/configs-openwrt'; else atf_d='$(BOARD_ATF_CFG_DIR)/configs'; uboot_d='$(BOARD_UBOOT_CFG_DIR)/configs'; fi; atf_list=$$(mktemp); uboot_list=$$(mktemp); if [ -d "$$atf_d" ] && [ -d "$$uboot_d" ]; then find -L "$$atf_d" -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n' | sed 's/_defconfig$$//' | sort -u > "$$atf_list"; find -L "$$uboot_d" -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n' | sed 's/_defconfig$$//' | sort -u > "$$uboot_list"; else find -L '$(BOARD_ATF_CFG_DIR)/configs' -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n' | sed 's/_defconfig$$//' | sort -u > "$$atf_list"; find -L '$(BOARD_UBOOT_CFG_DIR)/configs' -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n' | sed 's/_defconfig$$//' | sort -u > "$$uboot_list"; fi; all_cfgs=$$(comm -12 "$$atf_list" "$$uboot_list"); rm -f "$$atf_list" "$$uboot_list"; selected_boards=$$(grep '^CONFIG_BOARD_[A-Z0-9_]*=y$$' '$(CONFIG_FILE)' | sed 's/^CONFIG_BOARD_//; s/=y$$//' | tr '[:upper:]' '[:lower:]'); selected_platforms=$$(grep '^CONFIG_BUILD_ALL_[A-Z0-9_]*=y$$' '$(CONFIG_FILE)' | sed 's/^CONFIG_BUILD_ALL_//; s/=y$$//' | tr '[:upper:]' '[:lower:]'); for cfg in $$all_cfgs; do cfg_norm=$$(printf '%s\n' "$$cfg" | tr '-' '_'); include=0; for sel in $$selected_boards; do [ "$$sel" = "$$cfg_norm" ] && include=1 && break; done; if [ "$$include" -eq 0 ]; then for plat in $$selected_platforms; do prefix="$${plat}_"; if [ "$$cfg_norm" != "$${cfg_norm#$$prefix}" ]; then include=1; break; fi; done; fi; [ "$$include" -eq 1 ] && printf '%s\n' "$$cfg" | sed 's/^[^_]*_//'; done | sort -u; fi)
   endif
 else
   EVAL_BOARDS := 0
@@ -173,11 +175,44 @@ build:
 				SP2|sp2) ATF_DIR_TMP="atf-20260123"; UBOOT_DIR_TMP="uboot-mtk-20250711" ;; \
 				*) echo "Error: unsupported VERSION='$(VERSION)'." >&2; exit 1 ;; \
 			esac; \
+			var_lower=$$(echo "$(VARIANT)" | tr '[:upper:]' '[:lower:]'); \
+			case "$$var_lower" in \
+				ubootmod) \
+					atf_cfg="$$ATF_DIR_TMP/configs"; uboot_cfg="$$UBOOT_DIR_TMP/configs-fit" ;; \
+				ubi) \
+					atf_cfg="$$ATF_DIR_TMP/configs-ubi"; uboot_cfg="$$UBOOT_DIR_TMP/configs-ubi" ;; \
+				nonmbm) \
+					atf_cfg="$$ATF_DIR_TMP/configs-nonmbm"; uboot_cfg="$$UBOOT_DIR_TMP/configs-nonmbm" ;; \
+				openwrt) \
+					atf_cfg="$$ATF_DIR_TMP/configs"; uboot_cfg="$$UBOOT_DIR_TMP/configs-openwrt" ;; \
+				*) \
+					atf_cfg="$$ATF_DIR_TMP/configs"; uboot_cfg="$$UBOOT_DIR_TMP/configs" ;; \
+			esac; \
 			atf_list=$$(mktemp); uboot_list=$$(mktemp); \
 			trap 'rm -f "$$atf_list" "$$uboot_list"' EXIT; \
-			find -L "$$ATF_DIR_TMP/configs" -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n' | sed 's/_defconfig$$//' | sort -u > "$$atf_list"; \
-			find -L "$$UBOOT_DIR_TMP/configs" -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n' | sed 's/_defconfig$$//' | sort -u > "$$uboot_list"; \
-			boards=$$(comm -12 "$$atf_list" "$$uboot_list" | sed 's/^[^_]*_//'); \
+			if [[ -d "$$atf_cfg" && -d "$$uboot_cfg" ]]; then \
+				find -L "$$atf_cfg" -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n' | sed 's/_defconfig$$//' | sort -u > "$$atf_list"; \
+				find -L "$$uboot_cfg" -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n' | sed 's/_defconfig$$//' | sort -u > "$$uboot_list"; \
+				boards=$$(comm -12 "$$atf_list" "$$uboot_list" | sed 's/^[^_]*_//'); \
+			else \
+				echo "Warning: variant-specific config directory missing for VARIANT=$(VARIANT), falling back to default." >&2; \
+				find -L "$$ATF_DIR_TMP/configs" -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n' | sed 's/_defconfig$$//' | sort -u > "$$atf_list"; \
+				find -L "$$UBOOT_DIR_TMP/configs" -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n' | sed 's/_defconfig$$//' | sort -u > "$$uboot_list"; \
+				boards=$$(comm -12 "$$atf_list" "$$uboot_list" | sed 's/^[^_]*_//'); \
+			fi; \
+			if ! grep -q '^CONFIG_BUILD_ALL_BOARDS=y$$' '$(CONFIG_FILE)'; then \
+				sel_board=$$(grep '^CONFIG_BOARD_[A-Z0-9_]*=y$$' '$(CONFIG_FILE)' | sed 's/^CONFIG_BOARD_//; s/=y$$//' | tr '[:upper:]' '[:lower:]'); \
+				sel_plat=$$(grep '^CONFIG_BUILD_ALL_[A-Z0-9_]*=y$$' '$(CONFIG_FILE)' | sed 's/^CONFIG_BUILD_ALL_//; s/=y$$//' | tr '[:upper:]' '[:lower:]'); \
+				if [ -n "$$sel_board" ] || [ -n "$$sel_plat" ]; then \
+					newb=""; \
+					for b in $$boards; do b_n=$$(printf '%s\n' "$$b" | tr '-' '_'); ok=0; \
+						for s in $$sel_board; do [ "$$s" = "$$b_n" ] && ok=1 && break; done; \
+						if [ "$$ok" -eq 0 ]; then for p in $$sel_plat; do [ "$$b_n" != "$${b_n#$${p}_}" ] && ok=1 && break; done; fi; \
+						[ "$$ok" -eq 1 ] && newb="$$newb $$b"; \
+					done; \
+					boards="$$newb"; \
+				fi; \
+			fi; \
 		fi; \
 		if [[ -z "$$boards" ]]; then \
 			echo "Error: no BOARD selected. Run 'make menuconfig' and select boards, or pass BOARD=<board>." >&2; \
@@ -240,11 +275,9 @@ build:
 
 menuconfig:
 	@set -euo pipefail; \
-	if [ ! -f "$(CURDIR)/boards.kconfig" ]; then \
-		$(MAKE) --no-print-directory gen-board-kconfig; \
-	fi; \
+	$(MAKE) --no-print-directory gen-board-kconfig; \
 	ln -sf "$(CURDIR)/boards.kconfig" "$(MENUCONFIG_UBOOT_DIR)/boards.kconfig"; \
-	echo "Tip: use MODEL=all-mt7981/all-mt7986/all-mt7987/all-mt7988 for platform-wide builds, or MODEL=all for every board."; \
+	echo "Tip: select VARIANT first, then the board list will filter to compatible boards only."; \
 	printf '%s\n' "env -u MAKEFLAGS -u MAKELEVEL -u MFLAGS KBUILD_KCONFIG=\"$(CURDIR)/Kconfig\" KCONFIG_CONFIG=\"$(CURDIR)/$(CONFIG_FILE)\" make -C \"$(MENUCONFIG_UBOOT_DIR)\" menuconfig"; \
 	env -u MAKEFLAGS -u MAKELEVEL -u MFLAGS \
 	KBUILD_KCONFIG="$(CURDIR)/Kconfig" \
@@ -260,9 +293,7 @@ defconfig:
 		KBUILD_KCONFIG=/dev/null KCONFIG_CONFIG=/dev/null \
 		$(MAKE) -j1 -C "$(MENUCONFIG_UBOOT_DIR)" scripts/kconfig/conf; \
 	fi; \
-	if [ ! -f "$(CURDIR)/boards.kconfig" ]; then \
-		$(MAKE) --no-print-directory gen-board-kconfig; \
-	fi; \
+	$(MAKE) --no-print-directory gen-board-kconfig; \
 	ln -sf "$(CURDIR)/boards.kconfig" "$(MENUCONFIG_UBOOT_DIR)/boards.kconfig"; \
 	old_hash=""; \
 	if [ -f "$(CURDIR)/$(CONFIG_FILE)" ]; then \
@@ -292,9 +323,20 @@ all:
 		*) echo "Error: unsupported VERSION='$(VERSION)'." >&2; echo "Supported: 2025/SP1/SP2" >&2; exit 1 ;; \
 	esac; \
 	collect_board_configs() { \
+		local var_lower=$$(echo "$(VARIANT)" | tr '[:upper:]' '[:lower:]'); \
 		local atf_cfg_dir="$$ATF_DIR/configs"; \
 		local uboot_cfg_dir="$$UBOOT_DIR/configs"; \
-		local atf_list uboot_list; \
+		case "$$var_lower" in \
+			ubootmod) atf_cfg_dir="$$ATF_DIR/configs-ubi"; uboot_cfg_dir="$$UBOOT_DIR/configs-fit" ;; \
+			ubi) atf_cfg_dir="$$ATF_DIR/configs-ubi"; uboot_cfg_dir="$$UBOOT_DIR/configs-ubi" ;; \
+			nonmbm) atf_cfg_dir="$$ATF_DIR/configs-nonmbm"; uboot_cfg_dir="$$UBOOT_DIR/configs-nonmbm" ;; \
+			openwrt) uboot_cfg_dir="$$UBOOT_DIR/configs-openwrt" ;; \
+		esac; \
+		if [[ ! -d "$$atf_cfg_dir" || ! -d "$$uboot_cfg_dir" ]]; then \
+			echo "Warning: variant-specific config directory missing for VARIANT=$(VARIANT), falling back to default." >&2; \
+			atf_cfg_dir="$$ATF_DIR/configs"; \
+			uboot_cfg_dir="$$UBOOT_DIR/configs"; \
+		fi; \
 		if [[ ! -d "$$atf_cfg_dir" || ! -d "$$uboot_cfg_dir" ]]; then \
 			echo "Error: both configs directories must exist:" >&2; \
 			echo "  $$atf_cfg_dir" >&2; \
@@ -319,12 +361,12 @@ all:
 			local log_file="output/build-$${board}-$(VERSION)-$(VARIANT).log"; \
 			echo "Log: $$log_file"; \
 			env -u MAKEFLAGS -u MAKELEVEL -u MFLAGS \
-			BOARD="$$board" VERSION="$(VERSION)" VARIANT="$(VARIANT)" FSTHEME="$(FSTHEME)" \
+			BOARD="$$board" SOC="$$soc" VERSION="$(VERSION)" VARIANT="$(VARIANT)" FSTHEME="$(FSTHEME)" \
 			MULTI_LAYOUT="$(MULTI_LAYOUT)" FIXED_MTDPARTS="$(FIXED_MTDPARTS)" SIMG="$(SIMG)" \
 			UBIMNG="$(UBIMNG)" TELNETD="$(TELNETD)" COPY_BL2="$(COPY_BL2)" SILENT="$(SILENT)" ./build.sh 2>&1 | tee "$$log_file"; \
 		else \
 			env -u MAKEFLAGS -u MAKELEVEL -u MFLAGS \
-			BOARD="$$board" VERSION="$(VERSION)" VARIANT="$(VARIANT)" FSTHEME="$(FSTHEME)" \
+			BOARD="$$board" SOC="$$soc" VERSION="$(VERSION)" VARIANT="$(VARIANT)" FSTHEME="$(FSTHEME)" \
 			MULTI_LAYOUT="$(MULTI_LAYOUT)" FIXED_MTDPARTS="$(FIXED_MTDPARTS)" SIMG="$(SIMG)" \
 			UBIMNG="$(UBIMNG)" TELNETD="$(TELNETD)" COPY_BL2="$(COPY_BL2)" SILENT="$(SILENT)" ./build.sh; \
 		fi; \
@@ -363,23 +405,42 @@ boards:
 		SP2|sp2) ATF_DIR="atf-20260123"; UBOOT_DIR="uboot-mtk-20250711" ;; \
 		*) echo "Error: unsupported VERSION='$(VERSION)'." >&2; exit 1 ;; \
 	esac; \
-	collect_board_configs() { \
+	collect_boards_for_variant() { \
+		local variant="$$1"; \
+		local variant_lower=$$(echo "$$variant" | tr '[:upper:]' '[:lower:]'); \
 		local atf_cfg_dir="$$ATF_DIR/configs"; \
 		local uboot_cfg_dir="$$UBOOT_DIR/configs"; \
-		local atf_list uboot_list; \
-		atf_list="$$(mktemp)"; \
-		uboot_list="$$(mktemp)"; \
+		case "$$variant_lower" in \
+			default) ;; \
+			ubootmod) atf_cfg_dir="$$ATF_DIR/configs-ubi"; uboot_cfg_dir="$$UBOOT_DIR/configs-fit" ;; \
+			ubi) atf_cfg_dir="$$ATF_DIR/configs-ubi"; uboot_cfg_dir="$$UBOOT_DIR/configs-ubi" ;; \
+			nonmbm) atf_cfg_dir="$$ATF_DIR/configs-nonmbm"; uboot_cfg_dir="$$UBOOT_DIR/configs-nonmbm" ;; \
+			openwrt) uboot_cfg_dir="$$UBOOT_DIR/configs-openwrt" ;; \
+			all) atf_cfg_dir="$$ATF_DIR/configs-ubi"; uboot_cfg_dir="$$UBOOT_DIR/configs-fit"; uboot_cfg_dir2="$$UBOOT_DIR/configs-ubi" ;; \
+			*) echo "Error: unsupported VARIANT='$$variant'." >&2; return 1 ;; \
+		esac; \
+		local atf_list="$$(mktemp)"; \
+		local uboot_list="$$(mktemp)"; \
 		trap 'rm -f "$$atf_list" "$$uboot_list"' RETURN; \
-		find -L "$$atf_cfg_dir" -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n' | sed 's/_defconfig$$//' | sort -u > "$$atf_list"; \
-		find -L "$$uboot_cfg_dir" -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n' | sed 's/_defconfig$$//' | sort -u > "$$uboot_list"; \
+		if [[ "$$variant_lower" = "all" ]]; then \
+			for d in "$$ATF_DIR/configs" "$$ATF_DIR/configs-ubi" "$$ATF_DIR/configs-nonmbm"; do \
+				[[ -d "$$d" ]] && find -L "$$d" -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n'; \
+			done | sort -u > "$$atf_list"; \
+			for d in "$$UBOOT_DIR/configs" "$$UBOOT_DIR/configs-fit" "$$UBOOT_DIR/configs-ubi" "$$UBOOT_DIR/configs-nonmbm" "$$UBOOT_DIR/configs-openwrt"; do \
+				[[ -d "$$d" ]] && find -L "$$d" -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n'; \
+			done | sort -u > "$$uboot_list"; \
+		else \
+			[[ -d "$$atf_cfg_dir" ]] && find -L "$$atf_cfg_dir" -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n' | sed 's/_defconfig$$//' | sort -u > "$$atf_list"; \
+			[[ -d "$$uboot_cfg_dir" ]] && find -L "$$uboot_cfg_dir" -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n' | sed 's/_defconfig$$//' | sort -u > "$$uboot_list"; \
+		fi; \
 		comm -12 "$$atf_list" "$$uboot_list"; \
 	}; \
-	mapfile -t board_cfgs < <(collect_board_configs); \
+	mapfile -t board_cfgs < <(collect_boards_for_variant "$(or $(VARIANT),all)"); \
 	if [[ "$${#board_cfgs[@]}" -eq 0 ]]; then \
-		echo "No buildable BOARD found."; \
+		echo "No buildable BOARD found for VARIANT=$(or $(VARIANT),all)."; \
 		exit 0; \
 	fi; \
-	echo "Buildable MODEL list (use MODEL=<board>, MODEL=all, or MODEL=all-mt7981/7986/7987/7988):"; \
+	echo "Buildable MODEL list for VARIANT=$(or $(VARIANT),all) (use BOARD=<name>):"; \
 	printf '  %s\n' "$${board_cfgs[@]#*_}"
 
 board-configs:
@@ -390,18 +451,37 @@ board-configs:
 		SP2|sp2) ATF_DIR="atf-20260123"; UBOOT_DIR="uboot-mtk-20250711" ;; \
 		*) echo "Error: unsupported VERSION='$(VERSION)'." >&2; exit 1 ;; \
 	esac; \
-	collect_board_configs() { \
+	collect_boards_for_variant() { \
+		local variant="$$1"; \
+		local variant_lower=$$(echo "$$variant" | tr '[:upper:]' '[:lower:]'); \
 		local atf_cfg_dir="$$ATF_DIR/configs"; \
 		local uboot_cfg_dir="$$UBOOT_DIR/configs"; \
-		local atf_list uboot_list; \
-		atf_list="$$(mktemp)"; \
-		uboot_list="$$(mktemp)"; \
+		case "$$variant_lower" in \
+			default) ;; \
+			ubootmod) atf_cfg_dir="$$ATF_DIR/configs-ubi"; uboot_cfg_dir="$$UBOOT_DIR/configs-fit" ;; \
+			ubi) atf_cfg_dir="$$ATF_DIR/configs-ubi"; uboot_cfg_dir="$$UBOOT_DIR/configs-ubi" ;; \
+			nonmbm) atf_cfg_dir="$$ATF_DIR/configs-nonmbm"; uboot_cfg_dir="$$UBOOT_DIR/configs-nonmbm" ;; \
+			openwrt) uboot_cfg_dir="$$UBOOT_DIR/configs-openwrt" ;; \
+			all) atf_cfg_dir="$$ATF_DIR/configs-ubi"; uboot_cfg_dir="$$UBOOT_DIR/configs-fit"; uboot_cfg_dir2="$$UBOOT_DIR/configs-ubi" ;; \
+			*) echo "Error: unsupported VARIANT='$$variant'." >&2; return 1 ;; \
+		esac; \
+		local atf_list="$$(mktemp)"; \
+		local uboot_list="$$(mktemp)"; \
 		trap 'rm -f "$$atf_list" "$$uboot_list"' RETURN; \
-		find -L "$$atf_cfg_dir" -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n' | sed 's/_defconfig$$//' | sort -u > "$$atf_list"; \
-		find -L "$$uboot_cfg_dir" -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n' | sed 's/_defconfig$$//' | sort -u > "$$uboot_list"; \
+		if [[ "$$variant_lower" = "all" ]]; then \
+			for d in "$$ATF_DIR/configs" "$$ATF_DIR/configs-ubi" "$$ATF_DIR/configs-nonmbm"; do \
+				[[ -d "$$d" ]] && find -L "$$d" -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n'; \
+			done | sort -u > "$$atf_list"; \
+			for d in "$$UBOOT_DIR/configs" "$$UBOOT_DIR/configs-fit" "$$UBOOT_DIR/configs-ubi" "$$UBOOT_DIR/configs-nonmbm" "$$UBOOT_DIR/configs-openwrt"; do \
+				[[ -d "$$d" ]] && find -L "$$d" -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n'; \
+			done | sort -u > "$$uboot_list"; \
+		else \
+			[[ -d "$$atf_cfg_dir" ]] && find -L "$$atf_cfg_dir" -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n' | sed 's/_defconfig$$//' | sort -u > "$$atf_list"; \
+			[[ -d "$$uboot_cfg_dir" ]] && find -L "$$uboot_cfg_dir" -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n' | sed 's/_defconfig$$//' | sort -u > "$$uboot_list"; \
+		fi; \
 		comm -12 "$$atf_list" "$$uboot_list"; \
 	}; \
-	mapfile -t board_cfgs < <(collect_board_configs); \
+	mapfile -t board_cfgs < <(collect_boards_for_variant "$(or $(VARIANT),all)"); \
 	printf '%s\n' "$${board_cfgs[@]}"
 
 gen-board-kconfig:
@@ -412,51 +492,90 @@ gen-board-kconfig:
 		SP2|sp2) ATF_DIR="atf-20260123"; UBOOT_DIR="uboot-mtk-20250711" ;; \
 		*) echo "Error: unsupported VERSION='$(VERSION)'." >&2; exit 1 ;; \
 	esac; \
-	collect_board_configs() { \
-		local atf_cfg_dir="$$ATF_DIR/configs"; \
-		local uboot_cfg_dir="$$UBOOT_DIR/configs"; \
-		local atf_list uboot_list; \
-		atf_list="$$(mktemp)"; \
-		uboot_list="$$(mktemp)"; \
-		trap 'rm -f "$$atf_list" "$$uboot_list"' RETURN; \
-		find -L "$$atf_cfg_dir" -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n' | sed 's/_defconfig$$//' | sort -u > "$$atf_list"; \
-		find -L "$$uboot_cfg_dir" -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n' | sed 's/_defconfig$$//' | sort -u > "$$uboot_list"; \
-		comm -12 "$$atf_list" "$$uboot_list"; \
+	capture_list() { \
+		local dir="$$1"; local out="$$2"; \
+		if [[ -d "$$dir" ]]; then \
+			find -L "$$dir" -maxdepth 1 -type f -name '*_defconfig' -printf '%f\n' | sed 's/_defconfig$$//' | sort -u > "$$out"; \
+		else \
+			true > "$$out"; \
+		fi; \
 	}; \
-	mapfile -t board_cfgs < <(collect_board_configs); \
-	if [[ "$${#board_cfgs[@]}" -eq 0 ]]; then \
-		echo "Error: no buildable BOARD found." >&2; \
+	atf_def="$$(mktemp)"; atf_ubi="$$(mktemp)"; atf_nmbm="$$(mktemp)"; \
+	ubt_def="$$(mktemp)"; ubt_fit="$$(mktemp)"; ubt_ubi="$$(mktemp)"; ubt_nmbm="$$(mktemp)"; ubt_owrt="$$(mktemp)"; \
+	trap 'rm -f "$$atf_def" "$$atf_ubi" "$$atf_nmbm" "$$ubt_def" "$$ubt_fit" "$$ubt_ubi" "$$ubt_nmbm" "$$ubt_owrt"' RETURN; \
+	capture_list "$$ATF_DIR/configs"       "$$atf_def"; \
+	capture_list "$$ATF_DIR/configs-ubi"   "$$atf_ubi"; \
+	capture_list "$$ATF_DIR/configs-nonmbm" "$$atf_nmbm"; \
+	capture_list "$$UBOOT_DIR/configs"          "$$ubt_def"; \
+	capture_list "$$UBOOT_DIR/configs-fit"      "$$ubt_fit"; \
+	capture_list "$$UBOOT_DIR/configs-ubi"      "$$ubt_ubi"; \
+	capture_list "$$UBOOT_DIR/configs-nonmbm"   "$$ubt_nmbm"; \
+	capture_list "$$UBOOT_DIR/configs-openwrt"  "$$ubt_owrt"; \
+	\
+	boards_def=$$(comm -12 "$$atf_def"  "$$ubt_def"); \
+	boards_ubi_fit=$$(comm -12 "$$atf_ubi"  "$$ubt_fit"); \
+	boards_ubi_ubi=$$(comm -12 "$$atf_ubi"  "$$ubt_ubi"); \
+	boards_nmb=$$(comm -12 "$$atf_nmbm" "$$ubt_nmbm"); \
+	boards_owrt=$$(comm -12 "$$atf_def" "$$ubt_owrt"); \
+	\
+	all_boards="$$(printf '%s\n' "$$boards_def" "$$boards_ubi_fit" "$$boards_ubi_ubi" "$$boards_nmb" "$$boards_owrt" | sort -u)"; \
+	if [[ -z "$$all_boards" ]]; then \
+		echo "Error: no buildable BOARD found across any variant." >&2; \
 		exit 1; \
 	fi; \
-	platforms="$$(printf '%s\n' "$${board_cfgs[@]}" | awk -F_ '{print $$1}' | sort -u)"; \
+	\
+	variant_dep() { \
+		local cfg="$$1"; \
+		local def=0 fit=0 ubi=0 nmb=0 owrt=0; \
+		grep -qxF "$$cfg" "$$atf_def"  && grep -qxF "$$cfg" "$$ubt_def"  && def=1; \
+		grep -qxF "$$cfg" "$$atf_ubi"  && grep -qxF "$$cfg" "$$ubt_fit"  && fit=1; \
+		grep -qxF "$$cfg" "$$atf_ubi"  && grep -qxF "$$cfg" "$$ubt_ubi"  && ubi=1; \
+		grep -qxF "$$cfg" "$$atf_nmbm" && grep -qxF "$$cfg" "$$ubt_nmbm" && nmb=1; \
+		grep -qxF "$$cfg" "$$atf_def"  && grep -qxF "$$cfg" "$$ubt_owrt" && owrt=1; \
+		local deps=""; \
+		[ "$$def"  -eq 1 ] && deps="$${deps}VARIANT_DEFAULT || "; \
+		[ "$$fit"  -eq 1 ] && deps="$${deps}VARIANT_UBOOTMOD || "; \
+		[ "$$ubi"  -eq 1 ] && deps="$${deps}VARIANT_UBI || "; \
+		[ "$$nmb"  -eq 1 ] && deps="$${deps}VARIANT_NONMBM || "; \
+		[ "$$owrt" -eq 1 ] && deps="$${deps}VARIANT_OPENWRT || "; \
+		deps="$${deps% || }"; \
+		printf '%s' "$$deps"; \
+	}; \
+	\
+	platforms="$$(printf '%s\n' "$$all_boards" | awk -F_ '{print $$1}' | sort -u)"; \
 	out="boards.kconfig"; \
-	echo "# Auto-generated by: make gen-board-kconfig" > "$$out"; \
-	echo "# Do not edit manually. Regenerate with: make gen-board-kconfig" >> "$$out"; \
-	echo "" >> "$$out"; \
-	echo "menu \"Board selection\"" >> "$$out"; \
-	echo "" >> "$$out"; \
-	echo "config BUILD_ALL_BOARDS" >> "$$out"; \
-	echo "	bool \"Build all boards\"" >> "$$out"; \
-	echo "	default n" >> "$$out"; \
-	echo "	help" >> "$$out"; \
-	echo "	  When enabled, all discovered boards will be built." >> "$$out"; \
-	echo "	  Individual board selections below are ignored." >> "$$out"; \
-	echo "" >> "$$out"; \
+	{ \
+		echo "# Auto-generated by: make gen-board-kconfig"; \
+		echo "# Do not edit manually. Regenerate with: make gen-board-kconfig"; \
+		echo ""; \
+		echo "menu \"Board selection\""; \
+		echo ""; \
+		echo "config BUILD_ALL_BOARDS"; \
+		echo "	bool \"Build all boards\""; \
+		echo "	default n"; \
+		echo "	help"; \
+		echo "	  When enabled, all discovered boards (across all variants) will be built."; \
+		echo "	  Individual board selections below are ignored."; \
+		echo ""; \
+	} > "$$out"; \
 	for plat in $$platforms; do \
 		plat_sym=$$(echo "$$plat" | tr '[:lower:]' '[:upper:]'); \
 		printf 'config BUILD_ALL_%s\n' "$$plat_sym" >> "$$out"; \
 		printf '\tbool "Build all %s boards"\n' "$$plat" >> "$$out"; \
 		printf '\tdepends on !BUILD_ALL_BOARDS\n\n' >> "$$out"; \
 	done; \
-	for cfg in "$${board_cfgs[@]}"; do \
+	while IFS= read -r cfg; do \
+		[[ -z "$$cfg" ]] && continue; \
 		sym_name=$$(echo "$$cfg" | tr '[:lower:]-' '[:upper:]_'); \
 		plat_sym=$$(echo "$${cfg%%_*}" | tr '[:lower:]' '[:upper:]'); \
+		var_deps=$$(variant_dep "$$cfg"); \
 		printf 'config BOARD_%s\n' "$$sym_name" >> "$$out"; \
 		printf '\tbool "%s"\n' "$$cfg" >> "$$out"; \
-		printf '\tdepends on !BUILD_ALL_BOARDS && !BUILD_ALL_%s\n\n' "$$plat_sym" >> "$$out"; \
-	done; \
+		printf '\tdepends on !BUILD_ALL_BOARDS && !BUILD_ALL_%s && (%s)\n\n' "$$plat_sym" "$$var_deps" >> "$$out"; \
+	done <<< "$$all_boards"; \
 	echo "endmenu" >> "$$out"; \
-	echo "Generated $$out with $${#board_cfgs[@]} boards."
+	total=$$(echo "$$all_boards" | wc -l); \
+	echo "Generated $$out with $${total} boards (variant-aware)."
 
 atf:
 	@set -euo pipefail; \
@@ -516,7 +635,7 @@ help:
 		'' \
 		'Common variables:' \
 		'  VERSION=2025|SP1|SP2' \
-		'  VARIANT=default|ubootmod|nonmbm|openwrt' \
+		'  VARIANT=default|ubootmod|ubi|nonmbm|openwrt' \
 		'  FSTHEME=bootstrap|gl|mtk' \
 		'  BUILD_FIP=Y|N' \
 		'  BUILD_ATF=Y|N' \

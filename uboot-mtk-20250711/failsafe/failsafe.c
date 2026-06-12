@@ -60,6 +60,11 @@ static bool mtd_layout_save_pending;
 const char *get_mtd_layout_label(void);
 #endif
 
+#ifdef CONFIG_MTD_LAYOUT_SPI_NAND
+extern const char *mtd_layout_spi_nand_replace(const char *str, char *buf,
+					       size_t bufsz);
+#endif
+
 int __weak failsafe_validate_image(const void *data, size_t size, failsafe_fw_t fw)
 {
 	return 0;
@@ -355,6 +360,13 @@ static int sysinfo_json_append_mtd_layout(char *buf, int len, int left)
 		ofnode_for_each_subnode(layout, node) {
 			const char *label = ofnode_read_string(layout, "label");
 			const char *parts = ofnode_read_string(layout, "mtdparts");
+#ifdef CONFIG_MTD_LAYOUT_SPI_NAND
+			{
+				char parts_buf[512];
+				parts = mtd_layout_spi_nand_replace(parts, parts_buf,
+								   sizeof(parts_buf));
+			}
+#endif
 			char esc_label[128];
 			char esc_parts[512];
 

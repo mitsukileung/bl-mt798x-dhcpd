@@ -125,6 +125,9 @@ for cfg_file in $CONFIG_LIST; do
         elif [ "$variant_upper" = "UBOOTMOD" ]; then
             append_unique_line "_NAND_UBI=y" "$ATF_DIR/build/.config"
             feature_tag="${feature_tag}-ubootmod"
+        elif [ "$variant_upper" = "UBI" ]; then
+            append_unique_line "_NAND_UBI=y" "$ATF_DIR/build/.config"
+            feature_tag="${feature_tag}-ubi"
         fi
 
         if [ -n "${OC7981:-}" ] && [ "$soc" = "mt7981" ]; then
@@ -167,7 +170,9 @@ for cfg_file in $CONFIG_LIST; do
         echo "Feature: NAND_SKIP_BAD enabled"
     fi
     if echo "$feature_tag" | grep -q "ubootmod"; then
-        echo "Feature: NAND_UBI enabled"
+        echo "Feature: NAND_UBI enabled (ubootmod)"
+    elif echo "$feature_tag" | grep -q "ubi"; then
+        echo "Feature: NAND_UBI enabled (ubi)"
     fi
 
     echo "======================================================================"

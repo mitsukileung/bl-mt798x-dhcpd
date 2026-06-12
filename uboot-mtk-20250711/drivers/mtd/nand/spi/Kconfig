@@ -14,26 +14,26 @@ config MTD_SPI_NAND_DEVICE_AUTOSELECT
 	  Enable by default: DOSILICON, ESMT, ETRON, FMSH, FORESEE, 
 	  GIGADEVICE, GSTO, MACRONIX, MICRON, PARAGON, SKYHIGH, TOSHIBA,
 	  WINBOND, WODPOSIT, XTX.
-	  Disable by default: ALLIANCEMEMORY, ATO, BIWIN, HIKSEMI, HYF,
-	  JSC, SILICONGO, UNIM, XINCUN, ZBIT.
+	  Disable by default: ALLIANCEMEMORY, ATO, BIWIN, HEYANGTEK,
+	  HIKSEMI, HYF, JSC, SILICONGO, UNIM, XINCUN, ZBIT.
 	  If you want to add support for more SPI Nand flash chips,
 	  please enable the corresponding option below.
 
 config MTD_SPI_NAND_ALLIANCEMEMORY
 	bool "ALLIANCEMEMORY SPI flash support"
-	default n if MTD_SPI_NAND_DEVICE_AUTOSELECT
+	default n
 	help
 	  Add support for various ALLIANCEMEMORY SPI Nand flash chips
 
 config MTD_SPI_NAND_ATO
 	bool "ATO SPI flash support"
-	default n if MTD_SPI_NAND_DEVICE_AUTOSELECT
+	default n
 	help
 	  Add support for various ATO SPI Nand flash chips
 
 config MTD_SPI_NAND_BIWIN
 	bool "BIWIN SPI flash support"
-	default n if MTD_SPI_NAND_DEVICE_AUTOSELECT
+	default n
 	help
 	  Add support for various BIWIN SPI Nand flash chips
 
@@ -80,21 +80,27 @@ config MTD_SPI_NAND_GSTO
 	help
 	  Add support for various GSTO SPI Nand flash chips
 
+config MTD_SPI_NAND_HEYANGTEK
+	bool "HEYANGTEK SPI flash support"
+	default n
+	help
+	  Add support for various HEYANGTEK SPI Nand flash chips
+
 config MTD_SPI_NAND_HIKSEMI
 	bool "HIKSEMI SPI flash support"
-	default n if MTD_SPI_NAND_DEVICE_AUTOSELECT
+	default n
 	help
 	  Add support for various HIKSEMI SPI Nand flash chips
 
 config MTD_SPI_NAND_HYF
 	bool "HYF SPI flash support"
-	default n if MTD_SPI_NAND_DEVICE_AUTOSELECT
+	default n
 	help
 	  Add support for various HYF SPI Nand flash chips
 
 config MTD_SPI_NAND_JSC
 	bool "JSC SPI flash support"
-	default n if MTD_SPI_NAND_DEVICE_AUTOSELECT
+	default n
 	help
 	  Add support for various JSC SPI Nand flash chips
 
@@ -118,7 +124,7 @@ config MTD_SPI_NAND_PARAGON
 
 config MTD_SPI_NAND_SILICONGO
 	bool "SILICONGO SPI flash support"
-	default n if MTD_SPI_NAND_DEVICE_AUTOSELECT
+	default n
 	help
 	  Add support for various SILICONGO SPI Nand flash chips
 
@@ -136,7 +142,7 @@ config MTD_SPI_NAND_TOSHIBA
 
 config MTD_SPI_NAND_UNIM
 	bool "UNIM SPI flash support"
-	default n if MTD_SPI_NAND_DEVICE_AUTOSELECT
+	default n
 	help
 	  Add support for various UNIM SPI Nand flash chips
 
@@ -154,7 +160,7 @@ config MTD_SPI_NAND_WODPOSIT
 
 config MTD_SPI_NAND_XINCUN
 	bool "XINCUN SPI flash support"
-	default n if MTD_SPI_NAND_DEVICE_AUTOSELECT
+	default n
 	help
 	  Add support for various XINCUN SPI Nand flash chips
 
@@ -167,6 +173,6 @@ config MTD_SPI_NAND_XTX
 
 config MTD_SPI_NAND_ZBIT
 	bool "ZBIT SPI flash support"
-	default n if MTD_SPI_NAND_DEVICE_AUTOSELECT
+	default n
 	help
 	  Add support for various ZBIT SPI Nand flash chips

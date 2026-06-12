@@ -144,7 +144,7 @@ cmd_fsdata_gzembed = node $(WEBUI_FAILSAFE_GZIP_SCRIPT) $< $@
 quiet_cmd_as_o_html = AS      $@
 cmd_as_o_html = $(CC) $(a_flags) -c -o $@ \
 		-DDATA_SECT_NAME="\".rodata.fsdata.$(call strip_path,$(FSPATH_$(@F)))\"" \
-		-DDATA_OBJ_FILE="\"$(abspath $(srctree)/$(obj)/$(FILE_$(@F)))\"" \
+		-DDATA_OBJ_FILE="\"$(srctree)/$(obj)/$(FILE_$(@F))\"" \
 		-DDATA_OBJ_NAME="fsdata_$(call strip_path,$(FSPATH_$(@F)))" \
 		-DDATA_SIZE_NAME="fsdata_size_$(call strip_path,$(FSPATH_$(@F)))" \
 		-DDATA_SECT_FSPATH_NAME="\".rodata.fsdata.path.$(call strip_path,$(FSPATH_$(@F)))\"" \
@@ -184,7 +184,7 @@ $(obj)/.min/%.svg.gz: $(src)/%.svg $(WEBUI_FAILSAFE_GZIP_SCRIPT) FORCE
 $(obj)/%.o: $(obj)/.min/%.html.gz FORCE
 	$(call if_changed_dep,as_o_html)
 
-$(obj)/style.o: $(obj)/.min/style.css.gz FORCE
+$(obj)/%.o: $(obj)/.min/%.css.gz FORCE
 	$(call if_changed_dep,as_o_html)
 
 $(obj)/%.o: $(obj)/.min/%.js.gz FORCE
