@@ -136,6 +136,18 @@ config TELNETD
 	  over the network.
 	  Useful for debugging, but do not enable it on untrusted networks.
 
+config NAND_RAW
+	bool "Enable NAND raw/OOB backup and flash (DANGEROUS)"
+	default n
+	help
+	  Enable NAND raw mode in backup and flash editor that reads/writes
+	  pages including OOB (Out-Of-Band) spare area data via MTD_OPS_RAW.
+
+	  This preserves ECC layout and is required for byte-exact NAND dumps.
+
+	  WARNING: Raw mode requires significantly more memory (page_size +
+	  oob_size per page) and is only available on NAND flash devices.
+
 config COPY_BL2
 	bool "Copy BL2 after build"
 	default y

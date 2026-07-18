@@ -1696,10 +1696,10 @@ int mtd_upgrade_image(const void *data, size_t size)
 	struct owrt_image_info ii;
 	struct mtd_info *mtd;
 	int ret;
-	const char *ubi_flash_part = PART_UBI_NAME;
 #endif
 
 #ifdef CONFIG_CMD_UBI
+	const char *ubi_flash_part = PART_UBI_NAME;
 	struct mtd_info *mtd_kernel;
 #ifdef CONFIG_MEDIATEK_MULTI_MTD_LAYOUT
 	struct mtd_info *mtd_ubikernel, *mtd_ubirootfs;
@@ -1792,10 +1792,10 @@ int mtd_boot_image(bool do_boot)
 {
 #if defined(CONFIG_CMD_UBI) || !defined(CONFIG_MTK_DUAL_BOOT)
 	struct mtd_info *mtd;
-	const char *ubi_boot_part = PART_UBI_NAME;
 #endif
 
 #ifdef CONFIG_CMD_UBI
+	const char *ubi_boot_part = PART_UBI_NAME;
 	struct mtd_info *mtd_kernel;
 
 	ubi_image_vol = NULL;

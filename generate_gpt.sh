@@ -1,8 +1,53 @@
 #!/bin/bash
+# ============================================================================
+# generate_gpt.sh - Generate GPT binary files from JSON partition layouts
+#
+#   Run './generate_gpt.sh --help' for full usage information.
+# ============================================================================
+
+print_help() {
+	cat <<EOF
+generate_gpt.sh - Generate GPT (GUID Partition Table) binary files from
+                  JSON partition layout descriptions for MT798x platforms
+
+Usage:
+  [OPTIONS] ./generate_gpt.sh
+
+Modes:
+  Default:            Convert JSON partition layouts → GPT binary (.bin) files
+                      Output: output_gpt/gpt-<name>-Yuzhii_md5-<hash>.bin
+  SHOW=1:             Display partition info from existing GPT bin/img files
+                      Output: output_gpt/info/<name>_gptinfo.txt
+                      Output: output_gpt/info/<name>_gpt.json  (partition layout)
+  DRAW=1:             Also generate partition layout PNG visualization
+                      Output: output_gpt/picture/gpt-<name>.png
+  SDMMC=1:            Generate GPT binary for SD/MMC boot mode
+
+Optional:
+  VERSION             Firmware version: 2025 | SP1 | SP2        (default: 2025)
+  SHOW                Show existing GPT info: 0 | 1             (default: 0)
+  DRAW                Generate PNG visualization: 0 | 1 | notitle (default: 0)
+                      "notitle" draws without title text
+  SDMMC               Generate for SD/MMC boot: 0 | 1           (default: 0)
+
+Dependencies:
+  python2.7           Required for GPT generation
+  python3             Required for DRAW mode and SHOW JSON generation
+
+Options:
+  --help, -h          Show this help message and exit
+EOF
+	exit 0
+}
+
+case "${1:-}" in
+	--help|-h) print_help ;;
+esac
 
 input_folder="./mt798x_gpt"
 input_folder_show="./mt798x_gpt_bin"
 output_folder="./output_gpt"
+parse_gpt_tool="./tools/parse_gpt.py"
 
 VERSION=${VERSION:-2025}
 
@@ -21,6 +66,9 @@ fi
 echo "Trying python2.7..."
 command -v python2.7
 [ "$?" != "0" ] && { echo "Error: Python2.7 is not installed on this system."; exit 0; }
+echo "Trying python3..."
+command -v python3
+[ "$?" != "0" ] && { echo "Error: Python3 is not installed on this system."; exit 0; }
 
 echo "Using GPT tools from: $tools_folder"
 
@@ -34,12 +82,6 @@ fail_count=0
 png_built_count=0
 png_fail_count=0
 
-if [ "$DRAW" = "1" ]; then
-    echo "Trying python3..."
-    command -v python3
-    [ "$?" != "0" ] && { echo "Error: Python3 is not installed on this system."; exit 0; }
-fi
-
 if [ "$SHOW" = "1" ]; then
     for bin_file in "$input_folder_show"/*.bin "$input_folder_show"/*.img; do
         [ -e "$bin_file" ] || continue
@@ -48,6 +90,7 @@ if [ "$SHOW" = "1" ]; then
         filename_no_extension="${filename%.*}"
 
         output_file="$output_folder/info/${filename_no_extension}_gptinfo.txt"
+        output_json="$output_folder/info/${filename_no_extension}_gpt.json"
 
         echo
         echo "=============================="
@@ -57,11 +100,23 @@ if [ "$SHOW" = "1" ]; then
         echo "=============================="
         echo
 
+        # Generate the raw GPT info dump
         python2.7 "$tools_folder/mtk_gpt.py" --show "$bin_file" > "$output_file"
 
         if [ -f "$output_file" ]; then
             echo "Done: $filename, info written to: $output_file"
-            built_count=$((built_count + 1))
+
+            # Parse the info dump and generate GPT partition JSON
+            python3 "$parse_gpt_tool" --i "$output_file" --o "$output_json"
+
+            json_ret=$?
+            if [ $json_ret -eq 0 ] && [ -f "$output_json" ]; then
+                echo ""
+                built_count=$((built_count + 1))
+            else
+                echo "Warning: JSON generation failed (exit code: $json_ret)"
+                fail_count=$((fail_count + 1))
+            fi
         else
             echo "Failed: $filename (output not found: $output_file)"
             fail_count=$((fail_count + 1))

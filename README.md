@@ -52,7 +52,7 @@ sudo apt install gcc-aarch64-linux-gnu build-essential flex bison libssl-dev dev
 
 > If you want to build for arm v7l devices, you also need to install `gcc-arm-linux-gnueabi`
 >
-> The failsafe web UI assets are minified at build time. If you build the U-Boot manually, run `npm install` once in `uboot-mtk-20250711/failsafe` so the local minifier dependency is available(It will auto install by `build.sh` tool).
+> The failsafe web UI assets are minified at build time. If you build the U-Boot manually, run `npm install` once in `uboot-mtk-20250711/failsafe/embedded` so the local minifier dependency is available(It will auto install by `build.sh` tool).
 
 ## Build
 
@@ -394,7 +394,7 @@ More information about the NMBM enablement can be found in the [unified env-cont
 
 ## Old Version ( < U-Boot 2025 )
 
-This branch only supports **2025/SP1/SP2**.
+Current branch only supports **2025/SP1/SP2**.
 
 **You can find old versions(such as 2022/2023/2024) in the "old-version" branch, but they may have some issues, so it's recommended to use current branch for better experience.**
 
@@ -402,16 +402,16 @@ This branch only supports **2025/SP1/SP2**.
 
 ---
 
-## mt7621
+## MTMIPS
 
 **It only for development and testing, not recommended for production use.**
 
 ```bash
-chmod +x build_mt7621.sh
-BOARD=your_board ./build_mt7621.sh
+chmod +x mtmips.sh
+SOC=<mt7620|mt7621|mt7628|mt7688> BOARD=<board_name> ./mtmips.sh
 ```
 
-but it not preferred, because the mt7621 u-boot has some issues on uboot-mtk-20250711, failsafe web UI is not working, and other unknown issues.
+but it not preferred, because the mt7621 u-boot has some issues on uboot-mtk-20250711.
 
 It may cause some issues if you don't know what you are doing, so it's recommended to use the [uboot-mt7621-dhcpd](https://github.com/Yuzhii0718/uboot-mt7621-dhcpd) project for mt7621 devices, which is more stable and has better support for mt7621 devices.
 

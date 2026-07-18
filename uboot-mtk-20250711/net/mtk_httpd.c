@@ -11,11 +11,22 @@
 #include <errno.h>
 #include <malloc.h>
 #include <net.h>
+/*
+ * On MIPS, arch/mips/include/asm/regdef.h #defines sp as $29.
+ * Undefine it before mtk_tcp.h is parsed so struct field 'sp' stays intact.
+ */
+#ifdef __mips__
+#undef sp /* MIPS $29 register macro collides with struct field */
+#endif
 #include <net/mtk_tcp.h>
 #include <net/mtk_httpd.h>
 #include <vsprintf.h>
 #include <log.h>
 #include <asm/global_data.h>
+
+#ifdef __mips__
+#undef sp /* re-undef after asm includes */
+#endif
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -54,6 +65,8 @@ struct httpd_mtk_tcp_pdata {
 	char *upload_ptr;
 	u32 payload_size;
 	u32 upload_size;
+
+	u32 upload_start_time;
 
 	struct httpd_request request;
 	struct httpd_response response;
@@ -334,6 +347,24 @@ u32 http_make_response_header(struct http_response_info *info, char *buff,
 	return p - buff;
 }
 
+static void httpd_print_upload_speed(u32 size, u32 start_time)
+{
+	u32 elapsed = get_timer(start_time);
+	u32 kib = size / 1024;
+	u32 speed_kibs;
+
+	if (elapsed < 1)
+		elapsed = 1;
+	speed_kibs = (u32)(((u64)size * 1000) / ((u64)elapsed * 1024));
+
+	if (kib > 0)
+		printf("Upload complete: %u KiB in %u ms (%u KiB/s)\n",
+		       kib, elapsed, speed_kibs);
+	else
+		printf("Upload complete: %u bytes in %u ms (%u KiB/s)\n",
+		       (u32)size, elapsed, speed_kibs);
+}
+
 static int httpd_recv_hdr(struct httpd_instance *inst,
 			  struct mtk_tcp_cb_data *cbd)
 {
@@ -463,6 +494,8 @@ static int httpd_recv_hdr(struct httpd_instance *inst,
 			debug("    Content-Type: boundary=\"%s\"\n", b_ptr);
 		}
 
+		pdata->upload_start_time = get_timer(0);
+
 		if (hdr_size + pdata->payload_size < sizeof(pdata->buf)) {
 			/* upload payload can be put into the cache */
 			pdata->upload_ptr = pdata->buf + hdr_size;
@@ -491,6 +524,9 @@ static int httpd_recv_hdr(struct httpd_instance *inst,
 			/* upload completed */
 			pdata->upload_ptr[pdata->payload_size] = 0;
 			pdata->status = HTTPD_S_FULL_RCVD;
+			if (strcmp(pdata->uri, "/console/poll"))
+				httpd_print_upload_speed(pdata->payload_size,
+							pdata->upload_start_time);
 		} else {
 			/* switch status for further receving */
 			pdata->status = HTTPD_S_PAYLOAD_RECVING;
@@ -532,6 +568,9 @@ static int httpd_recv_payload(struct httpd_instance *inst,
 		/* remove uploading mark */
 		pdata->is_uploading = 0;
 		is_uploading = 0;
+		if (strcmp(pdata->uri, "/console/poll"))
+			httpd_print_upload_speed(pdata->payload_size,
+						pdata->upload_start_time);
 		return 0;
 	}
 

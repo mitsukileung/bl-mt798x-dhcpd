@@ -12,7 +12,7 @@
 
 #include <linux/list.h>
 
-#define MAX_HTTP_FORM_VALUE_ITEMS	5
+#define MAX_HTTP_FORM_VALUE_ITEMS	8
 
 struct httpd_form_value {
 	const char *name;

@@ -14,6 +14,7 @@
 #include <net/mtk_tcp.h>
 
 #define MTK_TCP_MSS			1440
+#define MTK_TCP_RCV_WND		65535
 
 struct mtk_tcp_hdr {
 	__be16 src;

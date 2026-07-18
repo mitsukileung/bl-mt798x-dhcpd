@@ -2,16 +2,17 @@
 /*
  * Copyright (C) 2026 Yuzhii0718
  *
- * All rights reserved.
+ * Telnet server for MediaTek web failsafe (RFC 854).
  *
- * Minimal telnet server for MediaTek web failsafe (RFC 854 compliant).
- *
- * Uses the mtk_tcp framework to accept telnet connections and provides
- * a U-Boot command-line interface.  Telnet option negotiation follows
- * RFC 854: the server sends WILL ECHO (server echoes characters),
- * WILL SGA (full-duplex, suppress go-ahead), and DO NAWS (request
- * window-size notifications).  Client negotiation requests are
- * properly responded to.
+ * Architecture (single-file, layered):
+ *   1. Constants & data structures
+ *   2. Protocol layer   — IAC negotiation, greeting banner
+ *   3. Editing engine    — cursor movement, insert/delete, redraw, echo
+ *   4. History           — ring-buffer command recall
+ *   5. Command execution — console capture, run_command, output delivery
+ *   6. Input processor   — per-byte dispatch (IAC → edit → exec)
+ *   7. TCP callback      — session lifecycle (new/data/sent/closed)
+ *   8. Public API        — mtk_telnetd_start/stop
  */
 
 #include <command.h>
@@ -27,63 +28,53 @@
 #include <vsprintf.h>
 #include <asm/global_data.h>
 
-#ifdef CONFIG_MTK_DHCPD
-#include <net/mtk_dhcpd.h>
-#endif
-
 DECLARE_GLOBAL_DATA_PTR;
 
-/**
- * is_network_command() - check if a command will call net_loop()
- *
- * Returns true for commands that perform network I/O through net_loop(),
- * which halts ethernet on completion.  The main poll loop needs to
- * reinitialize ethernet afterwards.
- */
-static bool is_network_command(const char *cmd)
-{
-	return strstr(cmd, "tftp") || strstr(cmd, "ping") ||
-	       strstr(cmd, "dhcp") || strstr(cmd, "bootp") ||
-	       strstr(cmd, "nfs")  || strstr(cmd, "rarp") ||
-	       strstr(cmd, "wget") || strstr(cmd, "tcp");
-}
+extern void failsafe_notify_network_cmd_done(void);
 
-/* ------------------------------------------------------------------
- * Telnet protocol constants
- * ------------------------------------------------------------------ */
+/* ================================================================== */
+/*  1. Constants                                                       */
+/* ================================================================== */
 
-#define IAC		255	/* Interpret As Command		*/
+/* --- Telnet protocol (RFC 854) --- */
+#define IAC		255
 #define WILL		251
 #define WONT		252
 #define DO		253
 #define DONT		254
-#define SB		250	/* Subnegotiation begin		*/
-#define SE		240	/* Subnegotiation end		*/
+#define SB		250
+#define SE		240
 
 #define TELOPT_ECHO	1
-#define TELOPT_SGA	3	/* Suppress Go Ahead		*/
-#define TELOPT_NAWS	31	/* Negotiate About Window Size	*/
+#define TELOPT_SGA	3
+#define TELOPT_NAWS	31
 
+/* --- Buffer sizes --- */
+#define TELNETD_INBUF_SIZE	2048
+#define TELNETD_OUTBUF_SIZE	8192
+#define TELNETD_CMD_MAX		512
+#define TELNETD_EDIT_BUF_SIZE	512
+#define TELNETD_HIST_MAX	16
+
+/* --- Fallback defaults --- */
 #ifndef WEBUI_FAILSAFE_GIT_HASH
-#define WEBUI_FAILSAFE_GIT_HASH	"unknown"
+#define WEBUI_FAILSAFE_GIT_HASH "unknown"
 #endif
-
 #ifndef WEBUI_FAILSAFE_GIT_DIRTY
-#define WEBUI_FAILSAFE_GIT_DIRTY	0
+#define WEBUI_FAILSAFE_GIT_DIRTY 0
 #endif
 
-/* ------------------------------------------------------------------
- * Buffer sizes
- * ------------------------------------------------------------------ */
+/* --- Cursor movement direction --- */
+enum telnetd_cursor_dir {
+	CURSOR_LEFT,
+	CURSOR_RIGHT,
+	CURSOR_HOME,
+	CURSOR_END,
+};
 
-#define TELNETD_INBUF_SIZE	2048	/* Raw TCP rx buffer		*/
-#define TELNETD_OUTBUF_SIZE	8192	/* Max console output per cmd	*/
-#define TELNETD_CMD_MAX		512	/* Max command line length	*/
-#define TELNETD_EDIT_BUF_SIZE	512	/* Max accumulated edit responses */
-
-/* ------------------------------------------------------------------
- * Session state
- * ------------------------------------------------------------------ */
+/* ================================================================== */
+/*  2. Data structures                                                 */
+/* ================================================================== */
 
 enum telnetd_state {
 	TELNETD_S_IDLE = 0,
@@ -91,146 +82,52 @@ enum telnetd_state {
 };
 
 struct telnetd_pdata {
+	/* Connection state */
 	enum telnetd_state state;
+	bool executing;		 /* guard against re-entrant execute() */
+	bool skip_lf;		 /* LF-after-CR suppression */
 
+	/* Input buffer (raw TCP bytes) */
 	char inbuf[TELNETD_INBUF_SIZE];
-	u32 inbuf_size;
+	u32  inbuf_size;
 
+	/* Command line */
 	char cmdbuf[TELNETD_CMD_MAX];
-	u32 cmdlen;
-	bool skip_lf;
+	u32  cmdlen;
+	u32  cmdpos;		 /* cursor position, 0..cmdlen */
 
-	char *outbuf;		/* malloc'd output buffer	*/
-	u32 outbuf_len;
-	bool outbuf_pending;
+	/* Out-of-band output (malloc'd, deferred send) */
+	char *outbuf;
+	u32   outbuf_len;
+	bool  outbuf_pending;
 
+	/* In-band edit responses (echo, backspace, cursor, IAC) */
 	char edit_outbuf[TELNETD_EDIT_BUF_SIZE];
-	u32 edit_outbuf_len;
+	u32  edit_outbuf_len;
 
-	bool executing;		/* true while run_command() is active –
-				 * prevents re-entrant telnetd_execute() calls
-				 * triggered by mtk_tcp_periodic_check()
-				 * running inside net_loop(). */
+	/* History ring buffer */
+	char history[TELNETD_HIST_MAX][TELNETD_CMD_MAX];
+	u32  hist_count;
+	u32  hist_head;
+	s32  hist_cur;		 /* -1 = not navigating */
+	char hist_saved[TELNETD_CMD_MAX];
 };
 
-/* ------------------------------------------------------------------
- * Global instance
- * ------------------------------------------------------------------ */
-
+/* Global instance */
 static struct {
-	u16 port;
+	u16  port;
 	bool running;
 } telnetd_inst;
 
-static const char *telnetd_get_prompt(void);
-
-/* ------------------------------------------------------------------
- * Negotiation sequence sent on every new connection.
- *
- *   WONT ECHO   – server will NOT echo; client does local echo
- *   WILL SGA    – full-duplex (suppress go-ahead)
- *   DO   NAWS   – please inform us of your window size
- *
- * Followed by a welcome banner that the telnet client displays after
- * the IAC escapes have been consumed.
- * ------------------------------------------------------------------ */
-
-/*
- * Telnet option negotiation sequence (RFC 854).
- * Sent on every new connection to set desired options.
- *
- *   WILL ECHO   – server echoes characters (traditional line mode)
- *   WILL SGA    – full-duplex (suppress go-ahead)
- *   DO   NAWS   – please inform us of your window size
- */
-static const char telnet_iac_negotiation[] = {
-	IAC, WILL, TELOPT_ECHO,
-	IAC, WILL, TELOPT_SGA,
-	IAC, DO,   TELOPT_NAWS,
-};
-
-/*
- * Greeting text prefix (dynamic version info appended).
- */
-static const char telnet_greeting_text[] = {
-	'\r', '\n',
-	'U', '-', 'B', 'o', 'o', 't', ' ',
-	'T', 'e', 'l', 'n', 'e', 't', ' ',
-	'C', 'o', 'n', 's', 'o', 'l', 'e',
-	'\r', '\n',
-};
-
-static const char telnet_fallback_text[] = {
-	'U', '-', 'B', 'o', 'o', 't', ' ',
-	'T', 'e', 'l', 'n', 'e', 't', ' ',
-	'C', 'o', 'n', 's', 'o', 'l', 'e',
-	'\r', '\n',
-	'A', 'u', 't', 'h', 'o', 'r', ':', ' ',
-	'Y', 'u', 'z', 'h', 'i', 'i', '0', '7', '1', '8',
-	'\r', '\n', '\r', '\n',
-	'M', 'T', 'K', '>', ' ',
-};
-
-static size_t telnetd_build_greeting(char *buf, size_t buf_sz)
-{
-	const char *git_hash = WEBUI_FAILSAFE_GIT_HASH;
-	const char *build_variant = NULL;
-	const char *prompt = telnetd_get_prompt();
-	bool dirty = !!WEBUI_FAILSAFE_GIT_DIRTY;
-	size_t off = 0;
-	int n;
-
-	if (!buf || buf_sz < 64)
-		return 0;
-
-	if (!git_hash || !git_hash[0])
-		git_hash = "unknown";
-
-#ifdef CONFIG_WEBUI_FAILSAFE_BUILD_VARIANT
-	build_variant = CONFIG_WEBUI_FAILSAFE_BUILD_VARIANT;
-	if (!build_variant[0])
-		build_variant = NULL;
-#endif
-
-	memcpy(buf + off, telnet_iac_negotiation,
-	       sizeof(telnet_iac_negotiation));
-	off += sizeof(telnet_iac_negotiation);
-
-	memcpy(buf + off, telnet_greeting_text,
-	       sizeof(telnet_greeting_text));
-	off += sizeof(telnet_greeting_text);
-
-	n = snprintf(buf + off, buf_sz - off,
-		     "Version: %s\r\nGit Hash: %s%s\r\n%s%s%s\r\n",
-                     version_string,
-                     git_hash, dirty ? " (dirty)" : "",
-                     build_variant ? "Build: " : "",
-                     build_variant ? build_variant : "",
-                     build_variant ? "\r\n" : "");
-	if (n < 0 || (size_t)n >= buf_sz - off)
-		return 0;
-	off += n;
-
-	n = snprintf(buf + off, buf_sz - off,
-		     "Author: Yuzhii0718\r\n\r\n%s", prompt);
-	if (n < 0 || (size_t)n >= buf_sz - off)
-		return 0;
-	off += n;
-
-	return off;
-}
-
-/* ------------------------------------------------------------------
- * Helpers
- * ------------------------------------------------------------------ */
+/* ================================================================== */
+/*  3. Protocol layer                                                  */
+/* ================================================================== */
 
 static const char *telnetd_get_prompt(void)
 {
 	const char *p = env_get("prompt");
-
 	if (p && p[0])
 		return p;
-
 #ifdef CONFIG_SYS_PROMPT
 	return CONFIG_SYS_PROMPT;
 #else
@@ -244,23 +141,25 @@ static int telnetd_ensure_recording(void)
 
 	if (!gd)
 		return -ENODEV;
-
 	if (!gd->console_out.start) {
 		ret = console_record_init();
 		if (ret)
 			return ret;
 	}
-
 	gd->flags |= GD_FLG_RECORD;
 	return 0;
 }
 
+/*
+ * Normalize LF → CRLF for telnet clients.
+ * Allocates up to len*2+1 bytes; caller must free.
+ */
 static char *telnetd_normalize_output(const char *src, size_t len,
 				      size_t *out_len)
 {
 	char *dst;
 	size_t i, di = 0;
-	bool last_was_cr = false;
+	bool last_cr = false;
 
 	if (!src || !len)
 		return NULL;
@@ -273,38 +172,451 @@ static char *telnetd_normalize_output(const char *src, size_t len,
 		unsigned char c = src[i];
 
 		if (c == '\n') {
-			if (!last_was_cr)
+			if (!last_cr)
 				dst[di++] = '\r';
 			dst[di++] = '\n';
-			last_was_cr = false;
-			continue;
+			last_cr = false;
+		} else {
+			last_cr = (c == '\r');
+			dst[di++] = c;
 		}
-
-		if (c == '\r')
-			last_was_cr = true;
-		else
-			last_was_cr = false;
-
-		dst[di++] = c;
 	}
-
 	if (out_len)
 		*out_len = di;
-
 	return dst;
 }
 
-static void telnetd_send_or_queue(struct mtk_tcp_cb_data *cbd,
-				   struct telnetd_pdata *pdata,
-				   char *buf, u32 len)
-{
-	int ret;
+/* --- Telnet IAC parsing --- */
 
+static u32 telnetd_iac_skip(const char *buf, u32 buflen)
+{
+	unsigned char cmd = buf[1];
+
+	if (cmd == IAC)
+		return 2;		/* literal 0xff */
+
+	if (cmd == SB) {		/* sub-negotiation */
+		u32 pos = 2;
+		while (pos + 1 < buflen) {
+			if ((unsigned char)buf[pos] == IAC &&
+			    (unsigned char)buf[pos + 1] == SE)
+				return pos + 2;
+			pos++;
+		}
+		return 0;		/* incomplete */
+	}
+
+	if (cmd >= 240 && cmd <= 249)
+		return 2;		/* NOP, AYT, etc. */
+
+	if ((cmd == WILL || cmd == WONT || cmd == DO || cmd == DONT)) {
+		if (buflen >= 3)
+			return 3;
+		return 0;		/* incomplete */
+	}
+
+	return 2;			/* unknown 2-byte */
+}
+
+static void telnetd_process_iac(struct telnetd_pdata *pdata,
+				const char *buf, u32 buflen)
+{
+	unsigned char cmd = buf[1];
+	unsigned char opt = buf[2];
+	unsigned char resp = 0;
+
+	if (buflen < 3)
+		return;
+	if (cmd != WILL && cmd != WONT && cmd != DO && cmd != DONT)
+		return;
+
+	switch (cmd) {
+	case DO:
+		resp = (opt == TELOPT_SGA || opt == TELOPT_ECHO) ? WILL : WONT;
+		break;
+	case DONT:
+		resp = WONT;
+		break;
+	case WILL:
+		resp = (opt == TELOPT_SGA || opt == TELOPT_NAWS) ? DO : DONT;
+		break;
+	case WONT:
+		resp = DONT;
+		break;
+	}
+
+	if (resp && pdata->edit_outbuf_len + 3 <= TELNETD_EDIT_BUF_SIZE) {
+		pdata->edit_outbuf[pdata->edit_outbuf_len++] = IAC;
+		pdata->edit_outbuf[pdata->edit_outbuf_len++] = resp;
+		pdata->edit_outbuf[pdata->edit_outbuf_len++] = opt;
+	}
+}
+
+/* --- Greeting banner --- */
+
+static const char telnet_iac_nego[] = {
+	IAC, WILL, TELOPT_ECHO,
+	IAC, WILL, TELOPT_SGA,
+	IAC, DO,   TELOPT_NAWS,
+};
+
+static const char telnet_greeting_prefix[] =
+	"\r\nU-Boot Telnet Console\r\n";
+
+static const char telnet_fallback_text[] =
+	"U-Boot Telnet Console\r\n"
+	"Author: Yuzhii0718\r\n\r\n"
+	"MTK> ";
+
+static size_t telnetd_build_greeting(char *buf, size_t sz)
+{
+	const char *hash = WEBUI_FAILSAFE_GIT_HASH;
+	const char *variant = NULL;
+	const char *prompt = telnetd_get_prompt();
+	bool dirty = !!WEBUI_FAILSAFE_GIT_DIRTY;
+	size_t off = 0;
+	int n;
+
+	if (!buf || sz < 64)
+		return 0;
+	if (!hash || !hash[0])
+		hash = "unknown";
+#ifdef CONFIG_WEBUI_FAILSAFE_BUILD_VARIANT
+	variant = CONFIG_WEBUI_FAILSAFE_BUILD_VARIANT;
+	if (variant && !variant[0])
+		variant = NULL;
+#endif
+
+	memcpy(buf + off, telnet_iac_nego, sizeof(telnet_iac_nego));
+	off += sizeof(telnet_iac_nego);
+
+	memcpy(buf + off, telnet_greeting_prefix,
+	       sizeof(telnet_greeting_prefix) - 1);
+	off += sizeof(telnet_greeting_prefix) - 1;
+
+	n = snprintf(buf + off, sz - off,
+		     "Version: %s\r\nGit Hash: %s%s\r\n%s%s%s\r\n",
+		     version_string, hash, dirty ? " (dirty)" : "",
+		     variant ? "Build: " : "",
+		     variant ? variant : "",
+		     variant ? "\r\n" : "");
+	if (n < 0 || (size_t)n >= sz - off)
+		return 0;
+	off += n;
+
+	n = snprintf(buf + off, sz - off,
+		     "Author: Yuzhii0718\r\n\r\n%s", prompt);
+	if (n < 0 || (size_t)n >= sz - off)
+		return 0;
+	off += n;
+
+	return off;
+}
+
+/* ================================================================== */
+/*  4. Editing engine                                                  */
+/* ================================================================== */
+
+/* --- Low-level edit_outbuf helpers --- */
+
+static bool edit_append_raw(struct telnetd_pdata *pdata,
+			    const char *data, u32 len)
+{
+	if (pdata->edit_outbuf_len + len > TELNETD_EDIT_BUF_SIZE)
+		return false;
+	memcpy(pdata->edit_outbuf + pdata->edit_outbuf_len, data, len);
+	pdata->edit_outbuf_len += len;
+	return true;
+}
+
+static void edit_backspace(struct telnetd_pdata *pdata)
+{
+	edit_append_raw(pdata, "\b \b", 3);
+}
+
+static void edit_echo(struct telnetd_pdata *pdata, char c)
+{
+	if (pdata->edit_outbuf_len < TELNETD_EDIT_BUF_SIZE)
+		pdata->edit_outbuf[pdata->edit_outbuf_len++] = c;
+}
+
+/* --- Cursor movement --- */
+
+static void edit_cursor(struct telnetd_pdata *pdata,
+			enum telnetd_cursor_dir dir)
+{
+	switch (dir) {
+	case CURSOR_LEFT:
+		if (pdata->cmdpos > 0) {
+			pdata->cmdpos--;
+			edit_append_raw(pdata, "\x1b[D", 3);
+		}
+		break;
+	case CURSOR_RIGHT:
+		if (pdata->cmdpos < pdata->cmdlen) {
+			pdata->cmdpos++;
+			edit_append_raw(pdata, "\x1b[C", 3);
+		}
+		break;
+	case CURSOR_HOME:
+		while (pdata->cmdpos > 0) {
+			pdata->cmdpos--;
+			edit_append_raw(pdata, "\x1b[D", 3);
+		}
+		break;
+	case CURSOR_END:
+		while (pdata->cmdpos < pdata->cmdlen) {
+			pdata->cmdpos++;
+			edit_append_raw(pdata, "\x1b[C", 3);
+		}
+		break;
+	}
+}
+
+/* --- Redraw tail (after mid-line edit) --- */
+
+static void edit_redraw_tail(struct telnetd_pdata *pdata,
+			     u32 from, s32 cursor_ofs)
+{
+	u32 tail = pdata->cmdlen - from;
+	u32 i;
+
+	/* Space for: tail chars + ESC[K (4B) + cursor escape (max 8B) */
+	if (pdata->edit_outbuf_len + tail + 4 + 8 > TELNETD_EDIT_BUF_SIZE)
+		return;
+
+	/* Reprint chars from 'from' to end */
+	for (i = from; i < pdata->cmdlen; i++)
+		pdata->edit_outbuf[pdata->edit_outbuf_len++] =
+			(unsigned char)pdata->cmdbuf[i];
+
+	/*
+	 * Clear to end of line.  When the edited line is shorter than
+	 * the original (delete), stale characters beyond the new end
+	 * must be erased.  ESC [ K clears from cursor to EOL.
+	 */
+	pdata->edit_outbuf[pdata->edit_outbuf_len++] = '\x1b';
+	pdata->edit_outbuf[pdata->edit_outbuf_len++] = '[';
+	pdata->edit_outbuf[pdata->edit_outbuf_len++] = 'K';
+
+	/* Reposition cursor */
+	{
+		s32 newpos = (s32)from + cursor_ofs;
+		s32 back = (s32)pdata->cmdlen - newpos;
+		char buf[8];
+
+		if (back > 0 && back <= 999) {
+			int n = snprintf(buf, sizeof(buf), "\x1b[%dD",
+					 (int)back);
+			if (n > 0) {
+				memcpy(pdata->edit_outbuf +
+				       pdata->edit_outbuf_len, buf,
+				       (u32)n);
+				pdata->edit_outbuf_len += (u32)n;
+			}
+		}
+	}
+}
+
+/* --- Character insertion (end-of-line or mid-line) --- */
+
+static bool edit_putc(struct telnetd_pdata *pdata, char c)
+{
+	if (pdata->cmdlen >= TELNETD_CMD_MAX - 1)
+		return false;
+
+	if (pdata->cmdpos == pdata->cmdlen) {
+		/* Append at end */
+		pdata->cmdbuf[pdata->cmdlen++] = c;
+		pdata->cmdpos++;
+		edit_echo(pdata, c);
+	} else {
+		/* Insert mid-line: shift, insert, redraw from insertion */
+		memmove(pdata->cmdbuf + pdata->cmdpos + 1,
+			pdata->cmdbuf + pdata->cmdpos,
+			pdata->cmdlen - pdata->cmdpos);
+		pdata->cmdbuf[pdata->cmdpos] = c;
+		pdata->cmdlen++;
+		pdata->cmdpos++;
+		edit_redraw_tail(pdata, pdata->cmdpos - 1, 1);
+	}
+	return true;
+}
+
+/* --- Character deletion (backspace) --- */
+
+static void edit_del(struct telnetd_pdata *pdata)
+{
+	if (pdata->cmdpos == 0)
+		return;
+
+	if (pdata->cmdpos == pdata->cmdlen) {
+		/* Delete at end */
+		pdata->cmdlen--;
+		pdata->cmdpos--;
+		edit_backspace(pdata);
+	} else {
+		/* Delete mid-line: remove char before cursor, shift, redraw */
+		u32 delpos = pdata->cmdpos - 1;
+
+		memmove(pdata->cmdbuf + delpos,
+			pdata->cmdbuf + pdata->cmdpos,
+			pdata->cmdlen - pdata->cmdpos);
+		pdata->cmdlen--;
+		pdata->cmdpos--;
+		edit_redraw_tail(pdata, delpos, 0);
+	}
+}
+
+/* --- Flush accumulated edit bytes to TCP --- */
+
+static void edit_flush(struct mtk_tcp_cb_data *cbd,
+		       struct telnetd_pdata *pdata)
+{
+	if (!pdata->edit_outbuf_len)
+		return;
+
+	if (!mtk_tcp_send_data(cbd->conn, pdata->edit_outbuf,
+			       pdata->edit_outbuf_len))
+		pdata->edit_outbuf_len = 0;
+}
+
+/* ================================================================== */
+/*  5. History management                                              */
+/* ================================================================== */
+
+static void hist_init(struct telnetd_pdata *pdata)
+{
+	pdata->hist_cur = -1;
+}
+
+static u32 hist_idx(struct telnetd_pdata *pdata, s32 n)
+{
+	return (pdata->hist_head + TELNETD_HIST_MAX - 1 -
+		(u32)(pdata->hist_count - 1 - n)) % TELNETD_HIST_MAX;
+}
+
+static void hist_save(struct telnetd_pdata *pdata, const char *cmd)
+{
+	u32 idx;
+
+	if (!cmd[0])
+		return;
+
+	idx = pdata->hist_head;
+	strncpy(pdata->history[idx], cmd, TELNETD_CMD_MAX - 1);
+	pdata->history[idx][TELNETD_CMD_MAX - 1] = '\0';
+
+	pdata->hist_head = (idx + 1) % TELNETD_HIST_MAX;
+	if (pdata->hist_count < TELNETD_HIST_MAX)
+		pdata->hist_count++;
+
+	pdata->hist_cur = -1;
+}
+
+/*
+ * Redraw the full line (used when history navigation replaces the
+ * entire command text).  Sends \r + ESC[K + prompt + command.
+ */
+static void hist_redraw_line(struct telnetd_pdata *pdata,
+			     const char *prompt)
+{
+	u32 plen = strlen(prompt);
+	u32 total = 4 + plen + pdata->cmdlen;
+
+	if (pdata->edit_outbuf_len + total + 8 > TELNETD_EDIT_BUF_SIZE)
+		return;
+
+	pdata->edit_outbuf[pdata->edit_outbuf_len++] = '\r';
+	pdata->edit_outbuf[pdata->edit_outbuf_len++] = '\x1b';
+	pdata->edit_outbuf[pdata->edit_outbuf_len++] = '[';
+	pdata->edit_outbuf[pdata->edit_outbuf_len++] = 'K';
+	memcpy(pdata->edit_outbuf + pdata->edit_outbuf_len, prompt, plen);
+	pdata->edit_outbuf_len += plen;
+	if (pdata->cmdlen) {
+		memcpy(pdata->edit_outbuf + pdata->edit_outbuf_len,
+		       pdata->cmdbuf, pdata->cmdlen);
+		pdata->edit_outbuf_len += pdata->cmdlen;
+	}
+}
+
+static void hist_prev(struct mtk_tcp_cb_data *cbd,
+		      struct telnetd_pdata *pdata)
+{
+	const char *prompt = telnetd_get_prompt();
+
+	if (pdata->hist_count == 0)
+		return;
+
+	if (pdata->hist_cur < 0) {
+		/* First press: save current line */
+		strncpy(pdata->hist_saved, pdata->cmdbuf,
+			TELNETD_CMD_MAX - 1);
+		pdata->hist_saved[TELNETD_CMD_MAX - 1] = '\0';
+		pdata->hist_cur = (s32)pdata->hist_count - 1;
+	} else {
+		pdata->hist_cur--;
+		if (pdata->hist_cur < 0)
+			pdata->hist_cur = (s32)pdata->hist_count - 1;
+	}
+
+	{
+		u32 idx = hist_idx(pdata, pdata->hist_cur);
+
+		strncpy(pdata->cmdbuf, pdata->history[idx],
+			TELNETD_CMD_MAX - 1);
+		pdata->cmdbuf[TELNETD_CMD_MAX - 1] = '\0';
+	}
+	pdata->cmdlen = strlen(pdata->cmdbuf);
+	pdata->cmdpos = pdata->cmdlen;
+	hist_redraw_line(pdata, prompt);
+}
+
+static void hist_next(struct mtk_tcp_cb_data *cbd,
+		      struct telnetd_pdata *pdata)
+{
+	const char *prompt = telnetd_get_prompt();
+
+	if (pdata->hist_cur < 0)
+		return;
+
+	pdata->hist_cur++;
+	if (pdata->hist_cur >= (s32)pdata->hist_count) {
+		/* Past end: restore saved */
+		pdata->hist_cur = -1;
+		strncpy(pdata->cmdbuf, pdata->hist_saved,
+			TELNETD_CMD_MAX - 1);
+		pdata->cmdbuf[TELNETD_CMD_MAX - 1] = '\0';
+	} else {
+		u32 idx = hist_idx(pdata, pdata->hist_cur);
+
+		strncpy(pdata->cmdbuf, pdata->history[idx],
+			TELNETD_CMD_MAX - 1);
+		pdata->cmdbuf[TELNETD_CMD_MAX - 1] = '\0';
+	}
+	pdata->cmdlen = strlen(pdata->cmdbuf);
+	pdata->cmdpos = pdata->cmdlen;
+	hist_redraw_line(pdata, prompt);
+}
+
+/* ================================================================== */
+/*  6. Command execution                                               */
+/* ================================================================== */
+
+/*
+ * Queue or immediately send an out-of-band buffer.
+ * On failure, saves pdata->outbuf for retry on MTK_TCP_CB_DATA_SENT.
+ * Caller transfers ownership of @buf to this function.
+ */
+static void telnetd_send_or_queue(struct mtk_tcp_cb_data *cbd,
+				  struct telnetd_pdata *pdata,
+				  char *buf, u32 len)
+{
 	if (!buf || !len)
 		return;
 
-	ret = mtk_tcp_send_data(cbd->conn, buf, len);
-	if (ret) {
+	if (mtk_tcp_send_data(cbd->conn, buf, len)) {
+		/* Send failed → queue for retry */
 		pdata->outbuf = buf;
 		pdata->outbuf_len = len;
 		pdata->outbuf_pending = true;
@@ -312,260 +624,91 @@ static void telnetd_send_or_queue(struct mtk_tcp_cb_data *cbd,
 		return;
 	}
 
+	/* Sent successfully — will free on DATA_SENT */
 	pdata->outbuf = buf;
 	pdata->outbuf_len = len;
 	pdata->outbuf_pending = false;
 	pdata->state = TELNETD_S_RESPONDING;
 }
 
-/**
- * telnetd_iac_skip() – return the number of raw bytes to skip for an
- * IAC sequence that starts at @buf[0].
+/*
+ * Execute a U-Boot command on behalf of a telnet client.
  *
- * On entry buf[0] == IAC and buf[1] is valid.
- *
- * Returns the total skip count (2, 3, or up to the end of a
- * sub-negotiation).  If the sequence is incomplete (e.g. IAC SB
- * without a terminating IAC SE within @buflen), returns 0 so the
- * caller can keep the tail for the next rx.
+ * Captures console output, normalizes line endings to CRLF, and
+ * delivers the result back to the client (or queues it if the TCP
+ * send buffer is full).
  */
-static u32 telnetd_iac_skip(const char *buf, u32 buflen)
-{
-	unsigned char cmd = buf[1];
-
-	/* IAC IAC – literal 0xff in the data stream */
-	if (cmd == IAC)
-		return 2;
-
-	/* Sub-negotiation: IAC SB <opt> ... IAC SE */
-	if (cmd == SB) {
-		u32 pos = 2;
-
-		while (pos + 1 < buflen) {
-			if ((unsigned char)buf[pos] == IAC &&
-			    (unsigned char)buf[pos + 1] == SE)
-				return pos + 2;
-			pos++;
-		}
-		/* incomplete – keep everything */
-		return 0;
-	}
-
-	/* Two-byte commands: NOP(241), AYT(246), etc. (240-249) */
-	if (cmd >= 240 && cmd <= 249)
-		return 2;
-
-	/*
-	 * Three-byte negotiations: WILL / WONT / DO / DONT + option.
-	 * Require all three bytes; if truncated, the caller keeps the
-	 * tail for the next TCP segment.
-	 */
-	if ((cmd == WILL || cmd == WONT || cmd == DO || cmd == DONT)) {
-		if (buflen >= 3)
-			return 3;
-		return 0;	/* incomplete – wait for more data */
-	}
-
-	/* Unknown – skip the two bytes we can identify */
-	return 2;
-}
-
-/**
- * telnetd_process_iac() – handle a Telnet IAC negotiation sequence.
- *
- * @buf: pointer to IAC command (buf[0] == IAC, buf[1] == command)
- * @buflen: number of bytes available (must be >= 3 for WILL/WONT/DO/DONT)
- *
- * Generates appropriate responses per RFC 854 and appends them to
- * pdata->edit_outbuf for batched sending.
- */
-static void telnetd_process_iac(struct telnetd_pdata *pdata,
-				const char *buf, u32 buflen)
-{
-	unsigned char cmd = buf[1];
-	unsigned char option = buf[2];
-
-	if (buflen < 3)
-		return;
-
-	/* Only handle WILL/WONT/DO/DONT */
-	if (cmd != WILL && cmd != WONT && cmd != DO && cmd != DONT)
-		return;
-
-	/*
-	 * Response strategy per RFC 854:
-	 * - DO X   → WILL X (if we support) or WONT X
-	 * - DONT X → WONT X
-	 * - WILL X → DO X   (if we want client to do) or DONT X
-	 * - WONT X → DONT X
-	 *
-	 * Supported options:
-	 *   ECHO: we send WILL (server echoes), client should DO ECHO
-	 *   SGA:  we send WILL (full-duplex), client should DO SGA
-	 *   NAWS: we send DO (request window size), client should WILL NAWS
-	 */
-	unsigned char response_cmd = 0;
-
-	switch (cmd) {
-	case DO:
-		/* Client asks us to enable option */
-		if (option == TELOPT_SGA || option == TELOPT_ECHO)
-			response_cmd = WILL;  /* we support SGA and ECHO */
-		else
-			response_cmd = WONT;  /* refuse others */
-		break;
-	case DONT:
-		/* Client insists we disable option */
-		response_cmd = WONT;
-		break;
-	case WILL:
-		/* Client wants to enable option */
-		if (option == TELOPT_SGA || option == TELOPT_NAWS)
-			response_cmd = DO;    /* agree */
-		else
-			response_cmd = DONT;  /* refuse */
-		break;
-	case WONT:
-		/* Client refuses to enable option */
-		response_cmd = DONT;
-		break;
-	}
-
-	/* Append response to edit_outbuf if space permits */
-	if (response_cmd && pdata->edit_outbuf_len + 3 <= TELNETD_EDIT_BUF_SIZE) {
-		pdata->edit_outbuf[pdata->edit_outbuf_len++] = IAC;
-		pdata->edit_outbuf[pdata->edit_outbuf_len++] = response_cmd;
-		pdata->edit_outbuf[pdata->edit_outbuf_len++] = option;
-	}
-}
-
-/**
- * telnetd_edit_backspace() – append a backspace-erase sequence to edit_outbuf.
- *
- * Erases one character on the client screen by sending "\b \b".
- * Used in WILL ECHO mode where the server controls the display.
- */
-static void telnetd_edit_backspace(struct telnetd_pdata *pdata)
-{
-	if (pdata->edit_outbuf_len + 3 <= TELNETD_EDIT_BUF_SIZE) {
-		pdata->edit_outbuf[pdata->edit_outbuf_len++] = '\b';
-		pdata->edit_outbuf[pdata->edit_outbuf_len++] = ' ';
-		pdata->edit_outbuf[pdata->edit_outbuf_len++] = '\b';
-	}
-}
-
-/**
- * telnetd_send_prompt() – send a prompt with preceding CRLF.
- *
- * Constructs "\r\n" + prompt and sends it via telnetd_send_or_queue().
- */
-static void telnetd_send_prompt(struct mtk_tcp_cb_data *cbd,
-				struct telnetd_pdata *pdata,
-				const char *prompt)
-{
-	size_t plen = strlen(prompt);
-	char *buf = malloc(plen + 3);
-
-	if (buf) {
-		buf[0] = '\r';
-		buf[1] = '\n';
-		memcpy(buf + 2, prompt, plen);
-		buf[2 + plen] = '\0';
-		telnetd_send_or_queue(cbd, pdata, buf, plen + 2);
-	}
-}
-
-/* ------------------------------------------------------------------
- * Command execution
- * ------------------------------------------------------------------ */
-
 static void telnetd_execute(struct mtk_tcp_cb_data *cbd,
 			    const char *cmd)
 {
 	struct telnetd_pdata *pdata = cbd->pdata;
 	const char *prompt = telnetd_get_prompt();
-	char *outbuf;
+	struct membuf saved_out;
+	struct membuf private_out;
+	bool use_private = false;
+	bool was_net;
 	int avail;
-	struct membuf saved_console_out;
-	struct membuf telnet_console_out;
 	char *raw_out = NULL;
-	bool use_private_console_out = false;
 
-	/* Empty command -> just re-print the prompt */
+	/* Empty command → just reprint prompt */
 	if (!cmd[0]) {
-		telnetd_send_prompt(cbd, pdata, prompt);
-		return;
-	}
+		char *buf = malloc(strlen(prompt) + 3);
 
-	/* Ensure console output is being recorded */
-	if (telnetd_ensure_recording()) {
-		outbuf = malloc(64);
-		if (outbuf) {
-			snprintf(outbuf, 64,
-				 "Error: console recording unavailable\r\n");
-			telnetd_send_or_queue(cbd, pdata, outbuf, strlen(outbuf));
+		if (buf) {
+			buf[0] = '\r'; buf[1] = '\n';
+			memcpy(buf + 2, prompt, strlen(prompt));
+			telnetd_send_or_queue(cbd, pdata, buf,
+					      strlen(prompt) + 2);
 		}
 		return;
 	}
 
-	saved_console_out = gd->console_out;
-	if (!membuf_new(&telnet_console_out, TELNETD_OUTBUF_SIZE)) {
-		gd->console_out = telnet_console_out;
-		use_private_console_out = true;
+	/* Ensure console recording */
+	if (telnetd_ensure_recording()) {
+		char *err = malloc(64);
+
+		if (err) {
+			snprintf(err, 64,
+				 "Error: console recording unavailable\r\n");
+			telnetd_send_or_queue(cbd, pdata, err, strlen(err));
+		}
+		return;
 	}
 
-	/* Reset record so we only capture output from this command */
+	/* Set up private console_out to isolate output */
+	saved_out = gd->console_out;
+	if (!membuf_new(&private_out, TELNETD_OUTBUF_SIZE)) {
+		gd->console_out = private_out;
+		use_private = true;
+	}
 	console_record_reset();
 
-	/* Detect network commands before running – they may halt ethernet */
-	bool was_network_cmd = is_network_command(cmd);
+	was_net = strstr(cmd, "tftp") || strstr(cmd, "ping") ||
+		  strstr(cmd, "dhcp") || strstr(cmd, "bootp") ||
+		  strstr(cmd, "nfs")  || strstr(cmd, "rarp") ||
+		  strstr(cmd, "wget") || strstr(cmd, "tcp");
 
 	/*
-	 * Mark that we are executing a command.  This prevents re-entrant
-	 * telnetd_execute() calls that can happen when net_loop() runs
-	 * mtk_tcp_periodic_check() for all protocols (our non-blocking
-	 * failsafe modification).  Without this guard, the callback for
-	 * this same telnet connection could fire again and corrupt the
-	 * saved gd->console_out / membuf state.
+	 * executing guard: net_loop() calls mtk_tcp_periodic_check()
+	 * which can re-enter this callback.  Block re-entry.
 	 */
 	pdata->executing = true;
-
-	/* Run the U-Boot command */
 	run_command(cmd, 0);
-
 	pdata->executing = false;
 
-	/*
-	 * If a network command was executed, net_loop() inside it called
-	 * eth_halt() on completion.  We must reinitialize the ethernet
-	 * device RIGHT NOW so that mtk_tcp_send_data() can deliver the
-	 * captured output to the telnet client.  We also re-register the
-	 * DHCP handler that net_clear_handlers() removed.
-	 */
-	if (was_network_cmd) {
-		eth_init();
-#ifdef CONFIG_MTK_DHCPD
-		if (mtk_dhcpd_is_running())
-			mtk_dhcpd_start();
-#endif
-	}
+	hist_save(pdata, cmd);
 
-	/* Print a fresh prompt after the command's output */
+	/* Schedule eth reinit outside the callback chain */
+	if (was_net)
+		failsafe_notify_network_cmd_done();
+
+	/* Print trailing prompt into console capture buffer */
 	if (prompt[0] != '\n')
 		printf("\n%s", prompt);
 	else
 		printf("%s", prompt);
 
-	/*
-	 * Read captured console output and always send response.
-	 *
-	 * Prepend "\r\n" so the output starts on a new line after the
-	 * echoed command.  Without this, the first line of output would
-	 * be appended to the command line, e.g.:
-	 *   "MT7981> ubi list0: kernel"   (wrong)
-	 * instead of:
-	 *   "MT7981> ubi list\r\n0: kernel" (correct)
-	 */
+	/* Read and deliver captured output */
 	avail = membuf_avail(&gd->console_out);
 	if (avail > TELNETD_OUTBUF_SIZE)
 		avail = TELNETD_OUTBUF_SIZE;
@@ -576,71 +719,222 @@ static void telnetd_execute(struct mtk_tcp_cb_data *cbd,
 
 		raw_out = malloc(avail + 2);
 		if (raw_out) {
-			/* Prepend \r\n for the line break after user input */
-			raw_out[0] = '\r';
-			raw_out[1] = '\n';
+			raw_out[0] = '\r'; raw_out[1] = '\n';
 			got = membuf_get(&gd->console_out, raw_out + 2, avail);
-			outbuf = telnetd_normalize_output(raw_out, got + 2,
-							  &norm_len);
-			if (outbuf) {
-				free(raw_out);
-				raw_out = NULL;
-				telnetd_send_or_queue(cbd, pdata, outbuf, norm_len);
-			} else {
-				telnetd_send_or_queue(cbd, pdata, raw_out, got + 2);
-				raw_out = NULL;
+			{
+				char *norm = telnetd_normalize_output(
+					raw_out, got + 2, &norm_len);
+				if (norm) {
+					free(raw_out);
+					raw_out = NULL;
+					telnetd_send_or_queue(cbd, pdata,
+							      norm, norm_len);
+				} else {
+					telnetd_send_or_queue(cbd, pdata,
+							      raw_out,
+							      got + 2);
+					raw_out = NULL;
+				}
 			}
 		}
 	} else {
-		/* No output: send prompt to indicate command completed */
-		telnetd_send_prompt(cbd, pdata, prompt);
+		/* No output → send prompt to show completion */
+		char *buf = malloc(strlen(prompt) + 3);
+
+		if (buf) {
+			buf[0] = '\r'; buf[1] = '\n';
+			memcpy(buf + 2, prompt, strlen(prompt));
+			telnetd_send_or_queue(cbd, pdata, buf,
+					      strlen(prompt) + 2);
+		}
 	}
 
-	if (use_private_console_out) {
+	if (use_private) {
 		membuf_dispose(&gd->console_out);
-		gd->console_out = saved_console_out;
+		gd->console_out = saved_out;
 	}
-
 	free(raw_out);
 }
 
-/* ------------------------------------------------------------------
- * Input processing
- * ------------------------------------------------------------------ */
+/* ================================================================== */
+/*  7. Input processor                                                 */
+/* ================================================================== */
 
-/**
- * telnetd_flush_edit_outbuf() – send accumulated edit responses
- * (echoed characters, backspace erasures, ^C, new prompts, IAC
- * negotiation replies) to the client in a single TCP segment
- * and reset the accumulator.
+/*
+ * Reset the command line to empty state and exit history navigation.
+ * Single point of truth — replaces 8 scattered reset blocks.
  */
-static void telnetd_flush_edit_outbuf(struct mtk_tcp_cb_data *cbd,
-				      struct telnetd_pdata *pdata)
+static void line_reset(struct telnetd_pdata *pdata)
 {
-	if (!pdata->edit_outbuf_len)
-		return;
-
-	if (!mtk_tcp_send_data(cbd->conn, pdata->edit_outbuf,
-			       pdata->edit_outbuf_len))
-		pdata->edit_outbuf_len = 0;
+	pdata->hist_cur = -1;
+	pdata->cmdlen = 0;
+	pdata->cmdpos = 0;
+	pdata->cmdbuf[0] = '\0';
 }
 
-/**
- * telnetd_process_input() – strip telnet IAC escapes from the buffered
- * raw input and execute commands on every complete line (delimited by
- * CR-NUL, CR-LF, bare CR, or bare LF).
+/* Clear line for new input (keeps hist_cur reset) */
+static void line_clear(struct telnetd_pdata *pdata)
+{
+	pdata->hist_cur = -1;
+	pdata->cmdlen = 0;
+	pdata->cmdpos = 0;
+	pdata->cmdbuf[0] = '\0';
+}
+
+/*
+ * Process one raw byte from the input buffer.
+ * Returns true if the byte was consumed, false if processing should
+ * stop (e.g. we entered RESPONDING state).
+ */
+static bool input_process_byte(struct mtk_tcp_cb_data *cbd,
+			       struct telnetd_pdata *pdata,
+			       unsigned char c)
+{
+	/* ---- Telnet IAC ---- */
+	if (c == IAC) {
+		/* Handled in the main loop with skip calculation */
+		return true;
+	}
+
+	/* ---- Line terminators ---- */
+	if (c == '\r' || c == '\n') {
+		if (c == '\r')
+			pdata->skip_lf = true;
+		pdata->cmdbuf[pdata->cmdlen] = '\0';
+		telnetd_execute(cbd, pdata->cmdbuf);
+		line_reset(pdata);
+		return (pdata->state == TELNETD_S_IDLE);
+	}
+
+	/* ---- ANSI CSI (ESC [ ...) ---- */
+	if (c == '\x1b')
+		return true; /* handled in main loop */
+
+	/* ---- Backspace / DEL ---- */
+	if (c == '\b' || c == 0x7f) {
+		pdata->hist_cur = -1;
+		edit_del(pdata);
+		return true;
+	}
+
+	/* ---- Ctrl+C: clear line + new prompt ---- */
+	if (c == '\x03') {
+		const char *prompt = telnetd_get_prompt();
+		u32 plen = strlen(prompt);
+
+		line_clear(pdata);
+		if (pdata->edit_outbuf_len + 6 + plen <=
+		    TELNETD_EDIT_BUF_SIZE) {
+			memcpy(pdata->edit_outbuf +
+			       pdata->edit_outbuf_len, "^C\r\n", 4);
+			pdata->edit_outbuf_len += 4;
+			memcpy(pdata->edit_outbuf +
+			       pdata->edit_outbuf_len, prompt, plen);
+			pdata->edit_outbuf_len += plen;
+		}
+		return true;
+	}
+
+	/* ---- Ctrl+U: clear line ---- */
+	if (c == '\x15') {
+		/* Backspace-erase each visible char */
+		while (pdata->cmdlen > 0 &&
+		       pdata->edit_outbuf_len + 3 <=
+		       TELNETD_EDIT_BUF_SIZE) {
+			pdata->cmdlen--;
+			edit_backspace(pdata);
+		}
+		line_clear(pdata);
+		return true;
+	}
+
+	/* ---- Ctrl+W: delete word ---- */
+	if (c == '\x17') {
+		pdata->hist_cur = -1;
+		while (pdata->cmdlen > 0 &&
+		       pdata->cmdbuf[pdata->cmdlen - 1] == ' ') {
+			if (pdata->edit_outbuf_len + 3 >
+			    TELNETD_EDIT_BUF_SIZE)
+				break;
+			pdata->cmdlen--;
+			edit_backspace(pdata);
+		}
+		while (pdata->cmdlen > 0 &&
+		       pdata->cmdbuf[pdata->cmdlen - 1] != ' ') {
+			if (pdata->edit_outbuf_len + 3 >
+			    TELNETD_EDIT_BUF_SIZE)
+				break;
+			pdata->cmdlen--;
+			edit_backspace(pdata);
+		}
+		pdata->cmdpos = pdata->cmdlen;
+		return true;
+	}
+
+	/* ---- TAB (no completion) ---- */
+	if (c == '\t')
+		return true;
+
+	/* ---- Other control chars: ignore ---- */
+	if (c < 0x20)
+		return true;
+
+	/* ---- Regular printable character ---- */
+	pdata->hist_cur = -1;
+	edit_putc(pdata, (char)c);
+	return true;
+}
+
+/*
+ * Handle a complete ANSI CSI sequence found at &pdata->inbuf[i].
+ * @i:   index of ESC
+ * @end: index after the terminator byte (i + seq_len)
+ * @term: the terminator character (e.g. 'A', 'D')
+ */
+static void input_handle_csi(struct mtk_tcp_cb_data *cbd,
+			     struct telnetd_pdata *pdata,
+			     unsigned char term)
+{
+	switch (term) {
+	case 'D': /* Left */
+		pdata->hist_cur = -1;
+		edit_cursor(pdata, CURSOR_LEFT);
+		break;
+	case 'C': /* Right */
+		pdata->hist_cur = -1;
+		edit_cursor(pdata, CURSOR_RIGHT);
+		break;
+	case 'A': /* Up */
+		hist_prev(cbd, pdata);
+		break;
+	case 'B': /* Down */
+		hist_next(cbd, pdata);
+		break;
+	case 'H': /* Home (ESC [ H) */
+		pdata->hist_cur = -1;
+		edit_cursor(pdata, CURSOR_HOME);
+		break;
+	case 'F': /* End (ESC [ F) */
+		pdata->hist_cur = -1;
+		edit_cursor(pdata, CURSOR_END);
+		break;
+	}
+}
+
+/*
+ * Main input processing loop.
+ * Consumes bytes from pdata->inbuf, dispatching each to the
+ * appropriate handler (IAC negotiation, ANSI CSI, or line editing).
  */
 static void telnetd_process_input(struct mtk_tcp_cb_data *cbd)
 {
 	struct telnetd_pdata *pdata = cbd->pdata;
-	u32 i;
-
-	/* Walk through the raw buffer and consume bytes */
-	i = 0;
+	u32 i = 0;
 
 	while (i < pdata->inbuf_size) {
 		unsigned char c = pdata->inbuf[i];
 
+		/* LF-after-CR suppression */
 		if (pdata->skip_lf) {
 			pdata->skip_lf = false;
 			if (c == '\0' || c == '\n') {
@@ -649,26 +943,19 @@ static void telnetd_process_input(struct mtk_tcp_cb_data *cbd)
 			}
 		}
 
-		/* ---- Telnet IAC escape ---- */
+		/* --- Telnet IAC --- */
 		if (c == IAC) {
 			u32 skip;
 
-			if (i + 1 >= pdata->inbuf_size) {
-				/*
-				 * Incomplete IAC at the end of the buffer –
-				 * keep it for the next rx.
-				 */
-				break;
-			}
+			if (i + 1 >= pdata->inbuf_size)
+				break; /* incomplete */
 
 			skip = telnetd_iac_skip(&pdata->inbuf[i],
 					       pdata->inbuf_size - i);
-			if (!skip) {
-				/* Incomplete sub-negotiation */
-				break;
-			}
+			if (!skip)
+				break; /* incomplete sub-negotiation */
 
-			/* IAC IAC is a literal 0xff – pass it through */
+			/* IAC IAC → literal 0xff */
 			if ((unsigned char)pdata->inbuf[i + 1] == IAC) {
 				if (pdata->cmdlen < TELNETD_CMD_MAX - 1)
 					pdata->cmdbuf[pdata->cmdlen++] = IAC;
@@ -676,170 +963,106 @@ static void telnetd_process_input(struct mtk_tcp_cb_data *cbd)
 				continue;
 			}
 
-			/* Handle negotiation sequences per RFC 854 */
 			telnetd_process_iac(pdata, &pdata->inbuf[i], skip);
 			i += skip;
 			continue;
 		}
 
-		/* ---- Line terminators ---- */
-		if (c == '\r' || c == '\n') {
-			pdata->cmdbuf[pdata->cmdlen] = '\0';
-			i++;
-			if (c == '\r')
-				pdata->skip_lf = true;
-			telnetd_execute(cbd, pdata->cmdbuf);
-			pdata->cmdlen = 0;
-			pdata->cmdbuf[0] = '\0';
-			/* Stop if we entered RESPONDING */
-			if (pdata->state != TELNETD_S_IDLE)
-				break;
-			continue;
-		}
-
-		/* ---- ANSI escape sequences (arrow keys, etc.) ---- */
+		/* --- ANSI CSI (ESC [ ... terminator) --- */
 		if (c == '\x1b') {
 			if (i + 1 < pdata->inbuf_size &&
 			    pdata->inbuf[i + 1] == '[') {
-				/* CSI: ESC [ ... terminator (0x40-0x7E) */
 				u32 j = i + 2;
+				unsigned char term = 0;
 
 				while (j < pdata->inbuf_size) {
 					unsigned char t = pdata->inbuf[j];
-
 					if (t >= 0x40 && t <= 0x7e) {
-						j++;
-						break; /* found terminator */
+						term = t; j++;
+						break;
 					}
 					if (t < 0x20 || t > 0x2f)
-						break; /* malformed */
+						break;
 					j++;
 				}
-				if (j > i + 2) {
-					i = j;
-					continue;
-				}
-				/* Incomplete — keep for next rx */
-				break;
+
+				if (!term)
+					break; /* incomplete */
+
+				/* 3-byte CSI: ESC [ X */
+				if (j == i + 3)
+					input_handle_csi(cbd, pdata, term);
+
+				i = j;
+				continue;
 			}
-			/* Lone ESC or unknown escape — skip it */
+			/* Lone ESC — skip */
 			i++;
 			continue;
 		}
 
-		/* ---- Backspace / DEL ---- */
-		if (c == '\b' || c == 0x7f) {
-			if (pdata->cmdlen > 0) {
-				pdata->cmdlen--;
-				telnetd_edit_backspace(pdata);
-			}
-			i++;
-			continue;
-		}
-
-		/* ---- Control characters ---- */
-		if (c == '\x03') {
-			/* Ctrl+C — clear line, print ^C + new prompt */
-			const char *prompt = telnetd_get_prompt();
-			u32 plen = strlen(prompt);
-			u32 need = 6 + plen;
-
-			pdata->cmdlen = 0;
-			pdata->cmdbuf[0] = '\0';
-			if (pdata->edit_outbuf_len + need <=
-			    TELNETD_EDIT_BUF_SIZE) {
-				pdata->edit_outbuf[
-				  pdata->edit_outbuf_len++] = '^';
-				pdata->edit_outbuf[
-				  pdata->edit_outbuf_len++] = 'C';
-				pdata->edit_outbuf[
-				  pdata->edit_outbuf_len++] = '\r';
-				pdata->edit_outbuf[
-				  pdata->edit_outbuf_len++] = '\n';
-				memcpy(pdata->edit_outbuf +
-				       pdata->edit_outbuf_len,
-				       prompt, plen);
-				pdata->edit_outbuf_len += plen;
-			}
-			i++;
-			continue;
-		}
-
-		if (c == '\x15') {
-			/* Ctrl+U — clear entire line */
-			while (pdata->cmdlen > 0 &&
-			       pdata->edit_outbuf_len + 3 <=
-			       TELNETD_EDIT_BUF_SIZE) {
-				pdata->cmdlen--;
-				telnetd_edit_backspace(pdata);
-			}
-			pdata->cmdlen = 0;
-			pdata->cmdbuf[0] = '\0';
-			i++;
-			continue;
-		}
-
-		if (c == '\x17') {
-			/* Ctrl+W — delete previous word */
-			while (pdata->cmdlen > 0 &&
-			       pdata->cmdbuf[pdata->cmdlen - 1] == ' ') {
-				if (pdata->edit_outbuf_len + 3 >
-				    TELNETD_EDIT_BUF_SIZE)
-					break;
-				pdata->cmdlen--;
-				telnetd_edit_backspace(pdata);
-			}
-			while (pdata->cmdlen > 0 &&
-			       pdata->cmdbuf[pdata->cmdlen - 1] != ' ') {
-				if (pdata->edit_outbuf_len + 3 >
-				    TELNETD_EDIT_BUF_SIZE)
-					break;
-				pdata->cmdlen--;
-				telnetd_edit_backspace(pdata);
-			}
-			i++;
-			continue;
-		}
-
-		/* ---- TAB — no tab-completion in U-Boot ---- */
-		if (c == '\t') {
-			i++;
-			continue;
-		}
-
-		if (c < 0x20) {
-			/* Other control chars (excluding handled above) */
-			i++;
-			continue;
-		}
-
-		/* ---- Regular character ---- */
-		if (pdata->cmdlen < TELNETD_CMD_MAX - 1) {
-			pdata->cmdbuf[pdata->cmdlen++] = c;
-			/* Echo back to client (WILL ECHO mode) */
-			if (pdata->edit_outbuf_len < TELNETD_EDIT_BUF_SIZE)
-				pdata->edit_outbuf[pdata->edit_outbuf_len++] = c;
-		}
+		/* --- Dispatch regular byte --- */
 		i++;
+		if (!input_process_byte(cbd, pdata, c))
+			break;
 	}
 
-	/* Flush accumulated edit responses (backspace erasures, etc.) */
-	telnetd_flush_edit_outbuf(cbd, pdata);
+	/* Flush accumulated edit responses */
+	edit_flush(cbd, pdata);
 
-	/* Remove consumed bytes from the raw buffer */
+	/* Remove consumed bytes */
 	if (i > 0) {
-		u32 remaining = pdata->inbuf_size - i;
+		u32 rem = pdata->inbuf_size - i;
 
-		if (remaining > 0)
-			memmove(pdata->inbuf, pdata->inbuf + i, remaining);
-		pdata->inbuf_size = remaining;
-		pdata->inbuf[remaining] = '\0';
+		if (rem > 0)
+			memmove(pdata->inbuf, pdata->inbuf + i, rem);
+		pdata->inbuf_size = rem;
+		pdata->inbuf[rem] = '\0';
 	}
 }
 
-/* ------------------------------------------------------------------
- * TCP callback
- * ------------------------------------------------------------------ */
+/* ================================================================== */
+/*  8. TCP callback (session lifecycle)                                */
+/* ================================================================== */
+
+static void telnetd_send_greeting(struct mtk_tcp_cb_data *cbd,
+				  struct telnetd_pdata *pdata)
+{
+	char *greeting = malloc(512);
+	size_t len;
+
+	if (greeting) {
+		len = telnetd_build_greeting(greeting, 512);
+		if (len) {
+			telnetd_send_or_queue(cbd, pdata, greeting, len);
+			return;
+		}
+		free(greeting);
+	}
+
+	/* Fallback: static greeting */
+	{
+		size_t nego = sizeof(telnet_iac_nego);
+		size_t text = sizeof(telnet_fallback_text) - 1;
+		char *fb = malloc(nego + text);
+
+		if (fb) {
+			memcpy(fb, telnet_iac_nego, nego);
+			memcpy(fb + nego, telnet_fallback_text, text);
+			telnetd_send_or_queue(cbd, pdata, fb, nego + text);
+		} else {
+			/* Last resort: send separately */
+			mtk_tcp_send_data(cbd->conn, telnet_iac_nego,
+					 sizeof(telnet_iac_nego));
+			mtk_tcp_send_data(cbd->conn, telnet_fallback_text,
+					 sizeof(telnet_fallback_text) - 1);
+			pdata->outbuf = NULL;
+			pdata->outbuf_len = 0;
+			pdata->outbuf_pending = false;
+			pdata->state = TELNETD_S_RESPONDING;
+		}
+	}
+}
 
 static void telnetd_callback(struct mtk_tcp_cb_data *cbd)
 {
@@ -847,68 +1070,21 @@ static void telnetd_callback(struct mtk_tcp_cb_data *cbd)
 	u8 sip[4];
 
 	switch (cbd->status) {
+
 	case MTK_TCP_CB_NEW_CONN:
 		pdata = calloc(1, sizeof(*pdata));
 		if (!pdata) {
 			mtk_tcp_close_conn(cbd->conn, 1);
 			break;
 		}
-
+		hist_init(pdata);
 		cbd->pdata = pdata;
 		mtk_tcp_conn_set_pdata(cbd->conn, pdata);
 
 		memcpy(sip, &cbd->sip, 4);
 		printf("Telnet connection from %d.%d.%d.%d:%d\n",
 		       sip[0], sip[1], sip[2], sip[3], ntohs(cbd->sp));
-
-		/*
-		 * Send negotiations + welcome banner as a single buffer.
-		 * Prefer a dynamic banner so we can include version info;
-		 * fall back to the static banner if allocation fails.
-		 */
-		{
-			char *greeting = malloc(512);
-			size_t greeting_len = 0;
-			char *fallback = NULL;
-
-			if (greeting) {
-				greeting_len = telnetd_build_greeting(greeting, 512);
-				if (greeting_len) {
-					telnetd_send_or_queue(cbd, pdata, greeting,
-							      greeting_len);
-					break;
-				}
-
-				free(greeting);
-			}
-
-			{
-				size_t nego_sz = sizeof(telnet_iac_negotiation);
-				size_t text_sz = sizeof(telnet_fallback_text);
-
-				fallback = malloc(nego_sz + text_sz);
-				if (fallback) {
-					memcpy(fallback, telnet_iac_negotiation, nego_sz);
-					memcpy(fallback + nego_sz, telnet_fallback_text, text_sz);
-					telnetd_send_or_queue(cbd, pdata, fallback,
-							      nego_sz + text_sz);
-				} else {
-					/* Low memory: send static negotiation + text */
-					if (!mtk_tcp_send_data(cbd->conn,
-							      telnet_iac_negotiation,
-							      sizeof(telnet_iac_negotiation))) {
-						if (!mtk_tcp_send_data(cbd->conn,
-								      telnet_fallback_text,
-								      sizeof(telnet_fallback_text))) {
-							pdata->outbuf = NULL;
-							pdata->outbuf_len = 0;
-							pdata->outbuf_pending = false;
-							pdata->state = TELNETD_S_RESPONDING;
-						}
-					}
-				}
-			}
-		}
+		telnetd_send_greeting(cbd, pdata);
 		break;
 
 	case MTK_TCP_CB_DATA_RCVD:
@@ -916,26 +1092,18 @@ static void telnetd_callback(struct mtk_tcp_cb_data *cbd)
 		if (!pdata)
 			break;
 
+		/* Buffer incoming data */
 		if (cbd->datalen) {
-			/* Always buffer incoming data, even when not IDLE */
-			u32 space = TELNETD_INBUF_SIZE -
-				    pdata->inbuf_size - 1;
-			u32 to_copy = min_t(u32, cbd->datalen, space);
+			u32 space = TELNETD_INBUF_SIZE - pdata->inbuf_size - 1;
+			u32 n = min_t(u32, cbd->datalen, space);
 
-			memcpy(pdata->inbuf + pdata->inbuf_size,
-			       cbd->data, to_copy);
-			pdata->inbuf_size += to_copy;
+			memcpy(pdata->inbuf + pdata->inbuf_size, cbd->data, n);
+			pdata->inbuf_size += n;
 			pdata->inbuf[pdata->inbuf_size] = '\0';
-			cbd->datalen = 0; /* consumed */
+			cbd->datalen = 0;
 		}
 
-		/*
-		 * Skip processing if we are inside telnetd_execute() –
-		 * mtk_tcp_periodic_check() runs from within net_loop()
-		 * and could re-enter us while a command (e.g. tftpboot)
-		 * is still executing.  The buffered data will be picked
-		 * up when we return to IDLE after the command finishes.
-		 */
+		/* Process only when idle and not re-entered from net_loop() */
 		if (pdata->state == TELNETD_S_IDLE && !pdata->executing)
 			telnetd_process_input(cbd);
 		break;
@@ -945,30 +1113,27 @@ static void telnetd_callback(struct mtk_tcp_cb_data *cbd)
 		if (!pdata)
 			break;
 
-		if (pdata->state == TELNETD_S_RESPONDING) {
-			if (pdata->outbuf_pending) {
-				if (!mtk_tcp_send_data(cbd->conn, pdata->outbuf,
-						      pdata->outbuf_len)) {
-					pdata->outbuf_pending = false;
-					return;
-				}
+		if (pdata->state != TELNETD_S_RESPONDING)
+			break;
+
+		/* Retry queued output if pending */
+		if (pdata->outbuf_pending) {
+			if (!mtk_tcp_send_data(cbd->conn, pdata->outbuf,
+					       pdata->outbuf_len)) {
 				pdata->outbuf_pending = false;
+				return;
 			}
-
-			/* Output buffer sent – free it, go idle */
-			free(pdata->outbuf);
-			pdata->outbuf = NULL;
-			pdata->outbuf_len = 0;
-			pdata->state = TELNETD_S_IDLE;
-
-			/*
-			 * Process any buffered input that arrived while
-			 * we were busy sending the previous response.
-			 * Skip if we are re-entered from net_loop().
-			 */
-			if (pdata->inbuf_size > 0 && !pdata->executing)
-				telnetd_process_input(cbd);
+			pdata->outbuf_pending = false;
 		}
+
+		free(pdata->outbuf);
+		pdata->outbuf = NULL;
+		pdata->outbuf_len = 0;
+		pdata->state = TELNETD_S_IDLE;
+
+		/* Process buffered input that arrived while sending */
+		if (pdata->inbuf_size > 0 && !pdata->executing)
+			telnetd_process_input(cbd);
 		break;
 
 	case MTK_TCP_CB_REMOTE_CLOSED:
@@ -978,7 +1143,6 @@ static void telnetd_callback(struct mtk_tcp_cb_data *cbd)
 			free(pdata->outbuf);
 			free(pdata);
 		}
-
 		memcpy(sip, &cbd->sip, 4);
 		printf("Telnet connection closed %d.%d.%d.%d:%d\n",
 		       sip[0], sip[1], sip[2], sip[3], ntohs(cbd->sp));
@@ -989,9 +1153,9 @@ static void telnetd_callback(struct mtk_tcp_cb_data *cbd)
 	}
 }
 
-/* ------------------------------------------------------------------
- * Public API
- * ------------------------------------------------------------------ */
+/* ================================================================== */
+/*  9. Public API                                                      */
+/* ================================================================== */
 
 int mtk_telnetd_start(u16 port)
 {
@@ -1034,18 +1198,13 @@ static int do_telnetd(struct cmd_tbl *cmdtp, int flag, int argc,
 		u16 port = 23;
 
 		if (argc > 2) {
-			unsigned long p;
-
-			p = simple_strtoul(argv[2], NULL, 10);
+			unsigned long p = simple_strtoul(argv[2], NULL, 10);
 			if (p >= 1 && p <= 65535)
 				port = (u16)p;
 		} else {
-			const char *env_port = env_get("telnet_port");
-
-			if (env_port) {
-				unsigned long p;
-
-				p = simple_strtoul(env_port, NULL, 10);
+			const char *ep = env_get("telnet_port");
+			if (ep) {
+				unsigned long p = simple_strtoul(ep, NULL, 10);
 				if (p >= 1 && p <= 65535)
 					port = (u16)p;
 			}
@@ -1053,7 +1212,6 @@ static int do_telnetd(struct cmd_tbl *cmdtp, int flag, int argc,
 
 		if (mtk_telnetd_start(port))
 			printf("Failed to start telnet server\n");
-
 		return CMD_RET_SUCCESS;
 	}
 
@@ -1070,7 +1228,7 @@ U_BOOT_CMD(telnetd, 3, 0, do_telnetd,
 	"start [port] - start telnet server (default port 23, or $telnet_port)\n"
 	"telnetd stop - stop telnet server\n\n"
 	"Environment:\n"
-	"  telnet_port - default port for telnetd (if not specified on command line)\n"
-	"  telnetd_enable - if set to a nonempty value, telnetd will start automatically on failsafe entry\n"
-	"			set 0/false/no/off to disable automatic start on failsafe entry"
+	"  telnet_port   - default port for telnetd\n"
+	"  telnetd_enable - auto-start on failsafe entry\n"
+	"                   (set 0/false/no/off to disable)"
 );

@@ -41,6 +41,7 @@ mt798x_simg/*
 unopen/*
 migration_*/
 migration*.py
+ptgen
 
 # Toolchain
 openwrt-toolchain*

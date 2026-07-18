@@ -83,6 +83,10 @@ int failsafe_validate_image(const void *data, size_t size, failsafe_fw_t fw)
 		for (i = 0; i < ARRAY_SIZE(simg_abbrs) && !dpe; i++)
 			dpe = find_part(upgrade_parts, num_parts, simg_abbrs[i]);
 	}
+#ifdef __mips__
+	if (!dpe && fw == FW_TYPE_FIP)
+		dpe = find_part(upgrade_parts, num_parts, "bl");
+#endif
 	if (!dpe)
 		return -ENODEV;
 
@@ -117,6 +121,10 @@ int failsafe_write_image(const void *data, size_t size, failsafe_fw_t fw)
 		for (i = 0; i < ARRAY_SIZE(simg_abbrs) && !dpe; i++)
 			dpe = find_part(upgrade_parts, num_parts, simg_abbrs[i]);
 	}
+#ifdef __mips__
+	if (!dpe && fw == FW_TYPE_FIP)
+		dpe = find_part(upgrade_parts, num_parts, "bl");
+#endif
 	if (!dpe)
 		return -ENODEV;
 

@@ -1,6 +1,6 @@
 # MTK Button Summary
 
-Generated: 2026-05-17 09:39:52
+Generated: 2026-07-08 20:23:08
 
 This document lists mt798* device-tree files that define `gpio-keys` nodes, with button label, PIO index, and active level.
 
@@ -8,16 +8,14 @@ This document lists mt798* device-tree files that define `gpio-keys` nodes, with
 
 | Filename | Model | Button Label | PIO | Level |
 |---|---|---|---|---|
-| `mt7981-360t7.dts` | 360t7 | reset | 1 | LOW |
-|  |  | mesh | 0 | LOW |
 | `mt7981-abt_asr3000.dts` | abt_asr3000 | reset | 1 | LOW |
 |  |  | mesh | 0 | LOW |
 | `mt7981-aigo-s21.dts` | aigo-s21 | reset | 1 | LOW |
 |  |  | mesh | 0 | LOW |
 | `mt7981-airpi-ap3000m.dts` | airpi-ap3000m | reset | 1 | LOW |
 |  |  | wps | 0 | LOW |
-| `mt7981-ax3000t.dts` | ax3000t | reset | 1 | LOW |
-|  |  | mesh | 0 | LOW |
+| `mt7981-bt_r320.dts` | bt_r320 | wps | 0 | LOW |
+|  |  | reset | 1 | LOW |
 | `mt7981-bt_rb300.dts` | bt_rb300 | reset | 1 | LOW |
 | `mt7981-cetron_ct3003.dts` | cetron_ct3003 | reset | 1 | LOW |
 |  |  | mesh | 0 | LOW |
@@ -42,12 +40,16 @@ This document lists mt798* device-tree files that define `gpio-keys` nodes, with
 |  |  | mesh | 0 | LOW |
 | `mt7981-honor_fur-602.dts` | honor_fur-602 | reset | 1 | LOW |
 |  |  | mesh | 0 | LOW |
+| `mt7981-huasifei-wh3000r-nand.dts` | huasifei-wh3000r-nand | reset | 1 | LOW |
+|  |  | mesh | 0 | LOW |
 | `mt7981-imou_lc-hx3001.dts` | imou_lc-hx3001 | reset | 1 | LOW |
 |  |  | mesh | 0 | LOW |
 | `mt7981-jcg_q30.dts` | jcg_q30 | reset | 1 | LOW |
 |  |  | mesh | 0 | LOW |
 | `mt7981-konka_komi-a31.dts` | konka_komi-a31 | reset | 1 | LOW |
 |  |  | mesh | 0 | LOW |
+| `mt7981-livinet-li320.dts` | livinet-li320 | wps | 0 | LOW |
+|  |  | reset | 1 | LOW |
 | `mt7981-livinet_zr-3020.dts` | livinet_zr-3020 | reset | 1 | LOW |
 |  |  | mesh | 0 | LOW |
 | `mt7981-newland_nl-wr8103.dts` | newland_nl-wr8103 | reset | 0 | LOW |
@@ -59,13 +61,21 @@ This document lists mt798* device-tree files that define `gpio-keys` nodes, with
 | `mt7981-openembed-som7981.dts` | openembed-som7981 | reset | 1 | LOW |
 | `mt7981-philips-hy3000.dts` | philips-hy3000 | reset | 1 | LOW |
 |  |  | mesh | 0 | LOW |
+| `mt7981-qihoo-360t7.dts` | qihoo-360t7 | reset | 1 | LOW |
+|  |  | mesh | 0 | LOW |
 | `mt7981-ruijie-rg-x30e.dtsi` | ruijie-rg-x30e | reset | 1 | LOW |
 |  |  | mesh | 0 | LOW |
 | `mt7981-sn-r1-common.dtsi` | sn-r1-common | reset | 1 | LOW |
 |  |  | mesh | 0 | LOW |
+| `mt7981-teralink-tl3020.dts` | teralink-tl3020 | wps | 0 | LOW |
+|  |  | reset | 1 | LOW |
+| `mt7981-tplink-wma301v2-1.dts` | tplink-wma301v2-1 | reset | 1 | LOW |
+|  |  | mesh | 0 | LOW |
 | `mt7981-tplink-wma301v2.dts` | tplink-wma301v2 | reset | 1 | LOW |
 |  |  | mesh | 0 | LOW |
-| `mt7981-wr30u.dts` | wr30u | reset | 1 | LOW |
+| `mt7981-xiaomi-ax3000t.dts` | xiaomi-ax3000t | reset | 1 | LOW |
+|  |  | mesh | 0 | LOW |
+| `mt7981-xiaomi-wr30u.dts` | xiaomi-wr30u | reset | 1 | LOW |
 |  |  | mesh | 0 | LOW |
 | `mt7981-zbt-z8103ax-c.dts` | zbt-z8103ax-c | reset | 1 | LOW |
 |  |  | mesh | 0 | LOW |
@@ -104,12 +114,15 @@ This document lists mt798* device-tree files that define `gpio-keys` nodes, with
 
 | Filename | Model | Button Label | PIO | Level |
 |---|---|---|---|---|
-| `mt7987a-emmc-airpi-e87n-common.dtsi` | emmc-airpi-e87n-common | reset | 1 | LOW |
+| `mt7987a-emmc-airpi-e87n.dts` | emmc-airpi-e87n | reset | 1 | LOW |
 |  |  | wps | 0 | LOW |
-| `mt7987a-emmc-airpi-h5000m.dts` | emmc-airpi-h5000m | reset | 1 | LOW |
+| `mt7987a-emmc-airpi-h5000m.dtsi` | emmc-airpi-h5000m | reset | 1 | LOW |
+|  |  | wps | 0 | LOW |
+| `mt7987a-emmc-mangopi-m87k.dts` | emmc-mangopi-m87k | reset | 1 | LOW |
 |  |  | wps | 0 | LOW |
 | `mt7987a-emmc-rfb.dts` | emmc-rfb | reset | 1 | LOW |
 |  |  | wps | 0 | LOW |
+| `mt7987a-nradio-c2000max-spim-nor-u-boot.dts` | nradio-c2000max-spim-nor-u-boot | reset | 1 | LOW |
 | `mt7987a-rfb.dts` | rfb | reset | 1 | LOW |
 |  |  | wps | 0 | LOW |
 | `mt7987a-sd-rfb.dts` | sd-rfb | reset | 1 | LOW |

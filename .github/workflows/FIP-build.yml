@@ -49,14 +49,19 @@ on:
           - gl
           - mtk
       EXTRA_OPTION:
-        description: 'Extra option (default=MULTI_LAYOUT off+FIXED_MTDPARTS on, multi_layout=both on, dis_fixed_mtdparts=both off)'
+        description: 'Extra option (single_layout=MULTI_LAYOUT off+FIXED_MTDPARTS on, multi_layout=both on, dis_fixed_mtdparts=both off)'
         required: false
-        default: 'default'
+        default: 'multi_layout'
         type: choice
         options:
-          - default
+          - single_layout
           - multi_layout
           - dis_fixed_mtdparts
+      COPY_BL2:
+        description: 'Copy BL2 image to output'
+        required: false
+        default: 'true'
+        type: boolean
       SIMG:
         description: 'Enable SIMG packaging'
         required: false
@@ -107,7 +112,8 @@ env:
   CONFIG_MODEL: ${{ github.event.inputs.MODEL }}
   CONFIG_VARIANT: ${{ github.event.inputs.VARIANT || 'default' }}
   CONFIG_FSTHEME: ${{ github.event.inputs.FSTHEME || 'bootstrap' }}
-  CONFIG_EXTRA_OPTION: ${{ github.event.inputs.EXTRA_OPTION || 'default' }}
+  CONFIG_EXTRA_OPTION: ${{ github.event.inputs.EXTRA_OPTION || 'multi_layout' }}
+  CONFIG_COPY_BL2: ${{ github.event.inputs.COPY_BL2 || 'true' }}
   CONFIG_SIMG: ${{ github.event.inputs.SIMG || 'false' }}
   CONFIG_BUILD_LOG: ${{ github.event.inputs.BUILD_LOG || 'true' }}
 
@@ -188,9 +194,9 @@ jobs:
 
         # Validate EXTRA_OPTION
         case "$EXTRA_IN" in
-          default|multi_layout|dis_fixed_mtdparts) ;;
+          single_layout|multi_layout|dis_fixed_mtdparts) ;;
           *)
-            echo "Error: invalid EXTRA_OPTION: '$EXTRA_IN' (expected default/multi_layout/dis_fixed_mtdparts)" >&2
+            echo "Error: invalid EXTRA_OPTION: '$EXTRA_IN' (expected single_layout/multi_layout/dis_fixed_mtdparts)" >&2
             exit 1
             ;;
         esac
@@ -333,6 +339,7 @@ jobs:
         config_apply "CONFIG_BUILD_FIP" "y"
         config_apply "CONFIG_BUILD_ATF" "n"
         config_apply "CONFIG_BUILD_GPT" "n"
+        config_apply "CONFIG_COPY_BL2" "$([ "$CONFIG_COPY_BL2" = "true" ] && echo y || echo n)"
 
         # Version selection (from FIP_VERSION_INPUT)
         FIP_INPUT="$FIP_VERSION_INPUT"
@@ -406,7 +413,7 @@ jobs:
         esac
 
         # EXTRA_OPTION: determines MULTI_LAYOUT and FIXED_MTDPARTS
-        # - default: MULTI_LAYOUT=n, FIXED_MTDPARTS=y
+        # - single_layout: MULTI_LAYOUT=n, FIXED_MTDPARTS=y
         # - multi_layout: MULTI_LAYOUT=y, FIXED_MTDPARTS=y
         # - dis_fixed_mtdparts: MULTI_LAYOUT=n, FIXED_MTDPARTS=n
         case "$CONFIG_EXTRA_OPTION" in
@@ -578,7 +585,7 @@ jobs:
               model_name="${entry#*_}"
 
               # Calculate effective MULTI_LAYOUT and FIXED_MTDPARTS for this build
-              # - default: MULTI_LAYOUT=0, FIXED_MTDPARTS=1
+              # - single_layout: MULTI_LAYOUT=0, FIXED_MTDPARTS=1
               # - multi_layout: MULTI_LAYOUT=1, FIXED_MTDPARTS=1
               # - dis_fixed_mtdparts: MULTI_LAYOUT=0, FIXED_MTDPARTS=0
               # ubootmod/openwrt variants force MULTI_LAYOUT=0
@@ -736,7 +743,7 @@ jobs:
             echo "- MULTI_LAYOUT disabled, FIXED_MTDPARTS disabled" >> release.txt
             ;;
           *)
-            echo "- MULTI_LAYOUT disabled, FIXED_MTDPARTS enabled (default)" >> release.txt
+            echo "- MULTI_LAYOUT disabled, FIXED_MTDPARTS enabled (single_layout)" >> release.txt
             ;;
         esac
         if [ "$CONFIG_SIMG" = "true" ]; then
@@ -744,6 +751,11 @@ jobs:
         fi
         if [ "$CONFIG_BUILD_LOG" = "true" ]; then
           echo "- Build log enabled" >> release.txt
+        fi
+        if [ "$CONFIG_COPY_BL2" = "true" ]; then
+          echo "- Copy BL2 image enabled" >> release.txt
+        else
+          echo "- Copy BL2 image disabled" >> release.txt
         fi
 
         case "$CONFIG_MODEL" in

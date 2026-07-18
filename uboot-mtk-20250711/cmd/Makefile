@@ -240,6 +240,9 @@ obj-$(CONFIG_CMD_SCP03) += scp03.o
 
 obj-$(CONFIG_CMD_GL_BTN) += glbtn.o led_blink.o
 
+# GPIO hardware verification
+obj-$(CONFIG_CMD_GPIOTEST) += gpiotest.o
+
 obj-$(CONFIG_CMD_SHOW_MTD_LAYOUT) += showlayout.o
 
 obj-$(CONFIG_HUSH_SELECTABLE) += cli.o
