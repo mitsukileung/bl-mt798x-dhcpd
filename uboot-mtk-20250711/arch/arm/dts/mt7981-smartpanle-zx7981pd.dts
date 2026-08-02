@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
 
 /dts-v1/;
 #include "mt7981.dtsi"
@@ -7,8 +7,8 @@
 / {
 	#address-cells = <1>;
 	#size-cells = <1>;
-	model = "mt7981-cmcc_a10";
-	compatible = "mediatek,mt7981", "mediatek,mt7981-rfb";
+	model = "SmartPanle ZX7981PD";
+	compatible = "smartpanle,zx7981pd", "mediatek,mt7981";
 
 	chosen {
 		stdout-path = &uart0;
@@ -16,90 +16,108 @@
 	};
 
 	config {
+		/delete-property/ u-boot,mmc-env-partition;
 		bootcmd = "mtkboardboot";
-		blink_led = "red:status";
-		system_led = "green:status";
+		blink_led = "amber:system";
+		system_led = "amber:system";
 	};
 
 	mtd-layout {
 		layout@0 {
 			label = "default";
-			// mtd layout for immortalwrt/openwrt 112M ubi firmware
 			mtdids = "nmbm0=nmbm0";
-			mtdparts = "nmbm0:1024k(bl2),512k(u-boot-env),2048k(Factory),2048k(fip),114688k(ubi)";
-		};
-
-		layout@1 {
-			label = "expand(114m)";
-			// mtd layout for 114m ubi firmware
-			mtdids = "nmbm0=nmbm0";
-			mtdparts = "nmbm0:1024k(bl2),512k(u-boot-env),2048k(Factory),2048k(fip),116736k(ubi)";
-		};
-
-		layout@2 {
-			label = "qwrt";
-			// mtd layout for lean qwrt
-			mtdids = "nmbm0=nmbm0";
-			mtdparts = "nmbm0:1024k(bl2),512k(u-boot-env),2048k(Factory),2048k(fip),1024k(rsv0),110M(ubi)";
-		};
-
-		layout@3 {
-			label = "stock";
-			// mtd layout for stock layout firmware
-			mtdids = "nmbm0=nmbm0";
-			mtdparts = "nmbm0:1024k(bl2),512k(u-boot-env),2048k(Factory),2048k(fip),1024k(rsv0),65536k(ubi)";
-		};
-
-		layout@4 {
-			label = "asuswrt";
-			mtdids = "nmbm0=nmbm0";
-			mtdparts = "nmbm0:1024k(bl2),512k(u-boot-env),2048k(Factory),2048k(fip),125440k(ubi)";
+			mtdparts = "nmbm0:1024k(bl2),512k(u-boot-env),2048k(Factory),2048k(fip),640k(woem),114688k(ubi),384k(wtinfo),384k(nvram)";
+			boot_part = "ubi";
+			factory_part = "ubi";
+			sysupgrade_kernel_ubipart = "ubi";
+			sysupgrade_rootfs_ubipart = "ubi";
 		};
 	};
 
 	gpio-keys {
 		compatible = "gpio-keys";
 
-		key-reset {
+		reset-button {
 			label = "reset";
 			linux,code = <KEY_RESTART>;
 			gpios = <&pio 1 GPIO_ACTIVE_LOW>;
 		};
 
-		key-wps {
+		wps-button {
 			label = "wps";
 			linux,code = <KEY_WPS_BUTTON>;
 			gpios = <&pio 0 GPIO_ACTIVE_LOW>;
 		};
 	};
 
-	gpio-leds {
+	leds {
 		compatible = "gpio-leds";
 
-		led-0 {
-			label = "blue:status";
-			gpios = <&pio 9 GPIO_ACTIVE_LOW>;
+		mesh {
+			label = "blue:mesh";
+			gpios = <&pio 11 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
 		};
 
-		led-1 {
-			label = "green:status";
-			gpios = <&pio 10 GPIO_ACTIVE_LOW>;
+		wifi {
+			label = "blue:wifi";
+			gpios = <&pio 4 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
 		};
 
-		led-2 {
-			label = "red:status";
-			gpios = <&pio 11 GPIO_ACTIVE_LOW>;
+		system-blue {
+			label = "blue:system";
+			gpios = <&pio 5 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
+
+		system-amber {
+			label = "amber:system";
+			gpios = <&pio 6 GPIO_ACTIVE_HIGH>;
+			default-state = "on";
+		};
+
+		wbh-5g-blue {
+			label = "blue:5g";
+			gpios = <&pio 9 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
+
+		wbh-5g-yellow {
+			label = "yellow:5g";
+			gpios = <&pio 13 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
+
+		wbh-4g-blue {
+			label = "blue:4g";
+			gpios = <&pio 12 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
+
+		wbh-4g-yellow {
+			label = "yellow:4g";
+			gpios = <&pio 10 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
 		};
 	};
 
 	memory@40000000 {
 		device_type = "memory";
-		reg = <0x40000000 0x10000000>;
+		reg = <0x40000000 0x20000000>;
 	};
 
 	bl2_verify {
 		bl2_compatible = "spim-nand";
 	};
+};
+
+&uart0 {
+	status = "okay";
+};
+
+&mmc0 {
+	status = "disabled";
 };
 
 &eth {
@@ -157,10 +175,14 @@
 	};
 };
 
-&uart0 {
+&watchdog {
+	status = "disabled";
+};
+
+&usbtphy {
 	status = "okay";
 };
 
-&watchdog {
-	status = "disabled";
+&xhci {
+	status = "okay";
 };

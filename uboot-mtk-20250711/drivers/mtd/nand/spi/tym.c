@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Author: Yuzhii0718 <admin@yuzhii0718.eu.org>
+ *
+ * SPI NAND flash driver for TYM (同源微半导体) devices.
  */
 
 #ifndef __UBOOT__
