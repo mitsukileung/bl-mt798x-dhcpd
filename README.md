@@ -4,9 +4,13 @@ A modified version of hanwckf's U-Boot for MT798x by Yuzhii, with support for DH
 
 Supports GitHub Actions for automatic builds, and can generate both normal and overclocked BL2.
 
-**Warning: Flashing custom bootloaders can brick your device. Proceed with caution and at your own risk.**
+> [!CAUTION]
+> **Warning: Flashing custom bootloaders can brick your device. Proceed with caution and at your own risk.**
 
 ## About bl-mt798x
+
+> [!NOTE]
+> How to use it? Click [**here**](#the-best-practices) for usage instructions.
 
 U-Boot 2025 adds more features:
 
@@ -311,6 +315,10 @@ How to flash:
 
 4. Restore the backup if something goes wrong
 
+### Enter failsafe by uBootEnter/BreedEnter
+
+We can enter failsafe mode by network without physical operation, more details can be found in the [uBootEnter](https://github.com/chenxin527/uBootEnter) and [BreedEnter](https://breed.hackpascal.net/) projects.
+
 ### Change failsafe WEB UI start key
 
 Default set `glbtn_key=reset,wps,mesh`, it means the glbtn command will search for GPIOs with labels "reset", "wps" and "mesh" in order, and use the first one found as the failsafe WEB UI start key.
@@ -370,7 +378,7 @@ fw_setenv failsafe 1 # Reboot to failsafe mode in next boot
 
 You can connect to the device with telnet, default port is 23, and you can set the `telnet_port` environment variable to change the port.
 
-TelnetD is enabled by default, but you can set the `telnetd_enable` environment variable to 0/false/no/off to disable it.
+TelnetD is enabled by default, but you can set the `telnetd_enable` environment variable to 0 to disable it.
 
 ### Unified env-controlled NMBM enablement(Only for MTD devices)
 

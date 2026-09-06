@@ -11,7 +11,6 @@
 #include <linux/device.h>
 #include <linux/kernel.h>
 #endif
-#include <linux/bitfield.h>
 #include <linux/bug.h>
 #include <linux/mtd/spinand.h>
 
@@ -341,7 +340,7 @@ static const struct spinand_info winbond_spinand_table[] = {
 		     SPINAND_ECCINFO(&w25n01jw_ooblayout, w25w35nxxjw_ecc_get_status)),
 	SPINAND_INFO("W25N01KV", /* 3.3V */
 		     SPINAND_ID(SPINAND_READID_METHOD_OPCODE_DUMMY, 0xae, 0x21),
-		     NAND_MEMORG(1, 2048, 96, 64, 1024, 20, 1, 1, 1),
+		     NAND_MEMORG(1, 2048, 64, 64, 1024, 20, 1, 1, 1),
 		     NAND_ECCREQ(4, 512),
 		     SPINAND_INFO_OP_VARIANTS(&read_cache_variants,
 					      &write_cache_variants,
@@ -507,11 +506,6 @@ static int winbond_spinand_init(struct spinand_device *spinand)
 		spinand_select_target(spinand, i);
 		spinand_upd_cfg(spinand, WINBOND_CFG_BUF_READ,
 				WINBOND_CFG_BUF_READ);
-	}
-
-	/* W25N01JWZEIG enable continuous read */
-	if (spinand->id.data[1] == 0xaa && spinand->id.data[2] == 0x21) {
-		spinand_upd_cfg(spinand, BIT(3), BIT(3));
 	}
 
 	/* W25N0xLV disable BRC in default */

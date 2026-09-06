@@ -37,7 +37,7 @@
 #include <failsafe/fw_type.h>
 
 #include "../board/mediatek/common/boot_helper.h"
-#include "failsafe_internal.h"
+#include <failsafe/internal.h>
 
 /* ------------------------------------------------------------------ */
 /*  Core state (local to the main loop)                                */
@@ -136,27 +136,15 @@ int start_web_failsafe(void)
 
 #ifdef CONFIG_MTK_TELNETD
 	if (IS_ENABLED(CONFIG_MTK_TELNETD)) {
-		const char *enable_str = env_get("telnet_enable");
-		const char *port_str = env_get("telnet_port");
-		unsigned long port = 23;
+		const char *enable_str = env_get("telnetd_enable");
 		bool enable = true;
 
-		/* Check if telnet is explicitly disabled */
-		if (enable_str) {
-			if (!strcmp(enable_str, "0") || !strcasecmp(enable_str, "false") ||
-			    !strcasecmp(enable_str, "no") || !strcasecmp(enable_str, "off")) {
-				enable = false;
-			}
-		}
+		/* Explicitly disabled when telnetd_enable is "0" */
+		if (enable_str && !strcmp(enable_str, "0"))
+			enable = false;
 
-		if (enable) {
-			if (port_str) {
-				port = simple_strtoul(port_str, NULL, 10);
-				if (port < 1 || port > 65535)
-					port = 23;
-			}
-			mtk_telnetd_start((u16)port);
-		}
+		if (enable)
+			mtk_telnetd_start(mtk_telnetd_env_port("telnet_port", 23));
 	}
 #endif
 
@@ -231,6 +219,19 @@ int start_web_failsafe(void)
 	 */
 	printf("[FAILSAFE] entering poll loop, done_flag=%d\n", mtk_tcp_done_flag);
 	while (!ctrlc() && !mtk_tcp_done_flag && !auto_action_pending) {
+#if defined(CONFIG_MTK_TELNETD)
+		/*
+		 * Run a queued telnet command at poll-loop level, OUTSIDE the
+		 * eth_rx() → TCP callback chain.  A command that enters
+		 * net_loop() (tftp, ping, ...) from inside that chain would
+		 * nest eth_rx() over the same DMA RX ring and corrupt it,
+		 * which shows up as a hard hang when the command is aborted.
+		 *
+		 * This is safe to call before eth_rx(): the command's own
+		 * net_loop() (if any) pumps the ethernet itself while it runs.
+		 */
+		mtk_telnetd_poll();
+#endif
 		bool need_poll = failsafe_httpd_running;
 
 #ifdef CONFIG_MTK_DHCPD
@@ -297,6 +298,17 @@ int start_web_failsafe(void)
 		schedule();
 	}
 
+	/*
+	 * Stop services in correct order: DNSD first, then DHCPD.
+	 * DNSD chains on top of DHCPD handler, so DNSD must be
+	 * unstacked before DHCPD to avoid a dangling handler pointer.
+	 */
+#ifdef CONFIG_MTK_DNSD
+	mtk_dnsd_stop();
+#endif
+#ifdef CONFIG_MTK_DHCPD
+	mtk_dhcpd_stop();
+#endif
 	failsafe_httpd_running = false;
 	mtk_tcp_close_all_conn();
 	eth_halt();
